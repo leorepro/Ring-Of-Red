@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#0f1113">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>RING of RED · 交戰</title>
+<link rel="stylesheet" href="./styles.css">
+<script type="importmap">
+{
+  "imports": {
+    "three": "./lib/three.module.js"
+  }
+}
+</script>
+</head>
+<body>
+  <!-- 3D battlefield -->
+  <canvas id="scene"></canvas>
+
+  <!-- CRT scanline overlay -->
+  <div class="scanline" aria-hidden="true"></div>
+  <div id="vignette" class="vignette" aria-hidden="true"></div>
+
+  <!-- ===================== HUD ===================== -->
+  <div id="hud" class="hud hidden">
+
+    <!-- top gunner dashboard -->
+    <header class="dash">
+      <div class="dash-side me">
+        <div class="tag">PLAYER AFW</div>
+        <div class="hpwrap"><div id="hp-me" class="hp"></div></div>
+        <div class="hpnum"><span id="hpnum-me">374</span> HP</div>
+      </div>
+
+      <div class="dash-mid">
+        <div id="timer" class="timer">90</div>
+        <div class="env">
+          <span id="range" class="chip">MEDIUM</span>
+          <span id="time" class="chip">DAY</span>
+          <span id="land" class="chip">LAND 5%</span>
+        </div>
+      </div>
+
+      <div class="dash-side foe">
+        <div class="tag">ENEMY AFW</div>
+        <div class="hpwrap"><div id="hp-foe" class="hp foe"></div></div>
+        <div class="hpnum"><span id="hpnum-foe">220</span> HP</div>
+      </div>
+    </header>
+
+    <!-- duel banner -->
+    <div id="banner" class="banner"></div>
+
+    <!-- gunner scope / reticle -->
+    <div class="scope" aria-hidden="true">
+      <div id="reticle" class="reticle">
+        <div class="ret-h"></div>
+        <div class="ret-v"></div>
+        <div class="ret-ring"></div>
+        <div class="ret-ruler"></div>
+      </div>
+      <div id="acc" class="acc">--.--<small>%</small></div>
+    </div>
+
+    <!-- heat + enemy charge gauges -->
+    <div class="gauges">
+      <div class="gauge">
+        <span>HEAT 過熱</span>
+        <div class="bar"><i id="heat"></i></div>
+      </div>
+      <div class="gauge">
+        <span>ENEMY 裝填</span>
+        <div class="bar"><i id="charge" class="g-foe"></i></div>
+      </div>
+    </div>
+
+    <div id="heatwarn" class="heatwarn hidden">機體溫度上升 — 已接近運轉極限！</div>
+
+    <!-- support soldiers strip -->
+    <div class="squad">
+      <div class="squad-row" id="squad-me"></div>
+      <div class="inf">步兵 <b id="inf-me">16</b>/16 · ★<b id="star-me">3</b></div>
+    </div>
+
+    <!-- control deck -->
+    <div class="deck">
+      <button id="btn-move" class="btn small">
+        <span class="k">L1</span>移動<small id="move-lbl">前進</small>
+      </button>
+      <button id="btn-skill" class="btn small">
+        <span class="k">△</span><small id="skill-lbl">導向彈</small><i id="skill-uses">×2</i>
+      </button>
+      <button id="btn-dodge" class="btn dodge">
+        <span class="k">L</span>迴避
+      </button>
+      <button id="btn-fire" class="btn fire">
+        <span class="k">✕</span>開火
+      </button>
+    </div>
+  </div>
+
+  <!-- ===================== TITLE ===================== -->
+  <div id="title" class="overlay">
+    <div class="reticle-mark"></div>
+    <div class="kicker">KONAMI-STYLE TACTICAL ARTILLERY</div>
+    <h1>RING of RED</h1>
+    <p class="sub">戰術機甲 · 90 秒砲擊對賭</p>
+    <p class="desc">
+      盯住命中率，自己決定<b>幾 % 開火</b>。<br>
+      機體會<b>過熱</b>、時間在<b>倒數</b>，敵人同時瞄著你 —<br>
+      聽到 <b>裝填滿</b> 就按 <b>迴避</b>，打亂它的高命中一擊。
+    </p>
+    <button id="start" class="btn fire big">出擊 START</button>
+    <div class="hint">手機橫向遊玩體驗最佳 · 觸控操作</div>
+  </div>
+
+  <!-- ===================== RESULT ===================== -->
+  <div id="result" class="overlay hidden">
+    <div id="result-title" class="result-title">MISSION COMPLETE</div>
+    <p id="result-sub" class="sub"></p>
+    <button id="again" class="btn fire big">再戰 RETRY</button>
+  </div>
+
+  <div id="rotate" class="rotate hidden">↻ 請將手機橫放以獲得最佳體驗</div>
+
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>
