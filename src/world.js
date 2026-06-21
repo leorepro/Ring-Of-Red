@@ -16,8 +16,8 @@ const CAM_Y = ENEMY_BASE_Y + 6.5 * ENEMY_SCALE;
 
 // cold day vs night palettes
 const DAY = {
-  fog: 0xbcbaa6, sky: 0xc9c4ac, ground: 0x646a58,
-  hemiSky: 0xc2ccbe, hemiGround: 0x363b30, key: 0xfff0d6, keyI: 1.28, ambI: 0.5,
+  fog: 0xbcbaa6, sky: 0xc9c4ac, ground: 0x6f7560,
+  hemiSky: 0xd2dccf, hemiGround: 0x40453a, key: 0xfff2da, keyI: 1.5, ambI: 0.66,
   skyTop: 0x6f8aa6, skyHorizon: 0xcbc6ae, sun: 0xffe6ad, sunCore: 0xfff4da,
   sunScale: 500, sunOp: 0.95, cloud: 0xf3efe2, cloudOp: 0.55,
 };
@@ -148,12 +148,13 @@ export class World {
   // damage, projection and animation.
   _buildAFW({ enemy }) {
     const g = new THREE.Group();
-    const body  = enemy ? 0x6f5d42 : 0x55603f;   // armour
-    const body2 = enemy ? 0x5a4b36 : 0x47512f;   // darker panels
-    const steel = 0x33373a;
-    const dark  = 0x202327;
-    const accent = enemy ? 0xc0443a : 0x8a9a5b;
-    const trim  = enemy ? 0xd9a23a : 0xb8c06a;
+    // brighter, multi-tone armour so the mech reads with depth, not a black blob
+    const body  = enemy ? 0xa8854f : 0x74824a;   // main armour (lighter)
+    const body2 = enemy ? 0x86683b : 0x586539;   // secondary panels
+    const steel = enemy ? 0x7b838b : 0x6f777d;   // gunmetal joints (lighter)
+    const dark  = 0x444a52;                       // dark detail (not black)
+    const accent = enemy ? 0xd84a3a : 0x9ab05f;   // bright accent
+    const trim  = enemy ? 0xeebd4c : 0xc8d176;    // trim/stripes
     const mat = (c, m = 0.4, r = 0.7) => new THREE.MeshStandardMaterial({ color: c, flatShading: true, roughness: r, metalness: m });
     const visMat = new THREE.MeshStandardMaterial({ color: 0x123, emissive: enemy ? 0xff5a3a : 0x6fd0ff, emissiveIntensity: 0.9, flatShading: true });
     const box = (w, h, d, c, m, r) => new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat(c, m, r));
@@ -323,27 +324,33 @@ export class World {
         }
       }
     }
+    // detached parts (blown-off arms) tumble and fall away
+    for (const nm in this._enemy.userData.parts) {
+      const node = this._enemy.userData.parts[nm]; const f = node.userData.fall;
+      if (f) {
+        f.vy -= 22 * dt;
+        node.position.x += f.vx * dt; node.position.y += f.vy * dt; node.rotation.z += f.vr * dt;
+        f.life -= dt; if (f.life <= 0) { node.visible = false; node.userData.fall = null; }
+      }
+    }
 
     // gunner aim micro-sway (shrinks as accuracy climbs)
-    const sway = state.phase === 'battle' ? rangeSway(state) * 0.010 : 0.004;
+    const sway = state.phase === 'battle' ? rangeSway(state) * 0.006 : 0.003;
     const sx = Math.sin(this.t * 1.7) * sway;
     const sy = Math.cos(this.t * 1.3) * sway * 0.7;
 
-    // ---- heavy walking-gait motion ----
-    // The gunner rides a multi-ton walking tank: a slow, weighty cadence with
-    // a side-to-side weight shift, an up-down footfall pound, a fore-aft surge
-    // as it strides forward, plus the lean/nod that go with each step.
+    // ---- walking-gait motion (gentle: keep the sight steady near the reticle) ----
     const moving = state.moving > 0;
-    const step = (moving ? 1.45 : 0.8) * Math.PI * 2;   // slow, heavy cadence
+    const step = (moving ? 1.45 : 0.8) * Math.PI * 2;
     const ph = this.t * step;
-    const weight = moving ? 1 : 0.5;                     // idle still shifts mass
-    const swayX  = Math.sin(ph) * 0.55 * weight;         // weight rolls L↔R
-    const bobY   = Math.sin(ph * 2) * 0.24 * weight;     // footfall pound (2/stride)
+    const weight = moving ? 0.7 : 0.32;                   // idle barely shifts
+    const swayX  = Math.sin(ph) * 0.32 * weight;
+    const bobY   = Math.sin(ph * 2) * 0.13 * weight;
     const lurchZ = moving
-      ? (0.6 - Math.cos(ph * 2) * 0.6) * 1.5             // surges forward each stride
-      : Math.sin(ph * 2) * 0.10;                         // idle fore-aft breathing
-    const rollZ  = Math.sin(ph) * 0.032 * weight;        // leans into each step
-    const pitchG = Math.sin(ph * 2 + 0.6) * 0.024 * weight; // nods on footfall
+      ? (0.6 - Math.cos(ph * 2) * 0.6) * 1.0
+      : Math.sin(ph * 2) * 0.05;
+    const rollZ  = Math.sin(ph) * 0.016 * weight;
+    const pitchG = Math.sin(ph * 2 + 0.6) * 0.012 * weight;
 
     // ---- heavy spring kick (recoil / impacts) + brief metallic rattle ----
     this._integrateKick(dt);
@@ -554,13 +561,33 @@ export class World {
       const node = P[name];
       if (!node || node.userData.broken === broken) continue;
       node.userData.broken = broken;
-      if (broken) {
-        node.traverse((o) => { if (o.material) o.material.color.setHex(0x241f1b); });
-        if (name === 'armL') node.rotation.z = 0.6;
-        else if (name === 'armR') node.rotation.z = -0.6;
-        else if (name === 'legL' || name === 'legR') node.rotation.x = 0.5;
-        else if (name === 'head') node.rotation.z = 0.5;
-      }
+      if (broken) this._destroyPart(name, node);
+    }
+  }
+
+  // dramatic per-part destruction the moment a part's coordination hits 0
+  _destroyPart(name, node) {
+    const wp = node.getWorldPosition(new THREE.Vector3());
+    node.traverse((o) => { if (o.material) { o.material = o.material.clone(); o.material.color.setHex(0x201b16); o.material.emissive && o.material.emissive.setHex(0x000000); } });
+    if (name === 'head') {
+      // head blown off — explode and detach upward
+      this._explosion(wp, 160); this._shockwave(wp, 0xfff0b0, 24);
+      this._sparks(wp, 0x9fd8ff, 26, 34); this._debrisBurst(wp, 0x33373a, 12, 24);
+      node.visible = false;                       // decapitated
+      const stump = node; setTimeout(() => {}, 0);
+      void stump;
+    } else if (name === 'armL' || name === 'armR') {
+      // arm cannon blown off — big blast, arm drops and detaches
+      this._explosion(wp, 150); this._sparks(wp, 0xffae5a, 22, 30); this._debrisBurst(wp, 0x6f5d42, 12, 22);
+      const dir = name === 'armL' ? 1 : -1;
+      node.userData.fall = { vx: dir * 6, vy: 4, vr: dir * 3, life: 1.6 };
+    } else if (name === 'legL' || name === 'legR') {
+      // leg crippled — buckles, mech lists to that side
+      this._explosion(wp, 130); this._sparks(wp, 0xffe0a0, 18, 24); this._debrisBurst(wp, 0x33373a, 10, 18);
+      node.rotation.x = 0.7; node.position.y -= 0.6;
+      this._enemy.rotation.z = (name === 'legL' ? 1 : -1) * 0.12;   // hull tilts
+    } else if (name === 'torso') {
+      this._explosion(wp, 150); this._smoke(wp, 0x201c18, 6, 9, 1.6);
     }
   }
 
@@ -643,11 +670,12 @@ export class World {
 
   // ---- VFX library ----------------------------------------------------
 
-  // bright sparks flying out with gravity
-  _sparks(pos, color, n = 12, speed = 22) {
+  // bright sparks flying out with gravity (sized to read at long range)
+  _sparks(pos, color, n = 12, speed = 26) {
     const parts = [];
     for (let i = 0; i < n; i++) {
-      const s = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.35, 0.35),
+      const sz = 1.1 + Math.random() * 0.9;
+      const s = new THREE.Mesh(new THREE.BoxGeometry(sz, sz, sz),
         new THREE.MeshBasicMaterial({ color, blending: THREE.AdditiveBlending, transparent: true }));
       s.position.copy(pos);
       const v = new THREE.Vector3(Math.random() - 0.5, Math.random() * 0.9 + 0.1, Math.random() - 0.5)
@@ -680,7 +708,7 @@ export class World {
   _debrisBurst(pos, color, n = 8, power = 16) {
     const parts = [];
     for (let i = 0; i < n; i++) {
-      const sz = 0.5 + Math.random() * 1.4;
+      const sz = 1.2 + Math.random() * 2.6;
       const m = new THREE.Mesh(new THREE.BoxGeometry(sz, sz, sz),
         new THREE.MeshStandardMaterial({ color, flatShading: true, roughness: 1 }));
       m.position.copy(pos);
@@ -730,9 +758,9 @@ export class World {
     const SPARK = { head: 0x9fd8ff, torso: 0xffd27a, armL: 0xffae5a, armR: 0xffae5a, legL: 0xffe0a0, legR: 0xffe0a0 };
     const color = SPARK[part] || 0xffd27a;
     if (crit) { this._critFx(pos); return; }
-    this._explosion(pos, part === 'torso' ? 70 : 48);
-    this._sparks(pos, color, part === 'head' ? 18 : 12, part === 'head' ? 30 : 22);
-    if (part === 'torso') this._debrisBurst(pos, 0x6b5a3a, 9, 18);
+    this._explosion(pos, part === 'torso' ? 95 : 70);
+    this._sparks(pos, color, part === 'head' ? 22 : 16, part === 'head' ? 34 : 26);
+    if (part === 'torso') this._debrisBurst(pos, 0x8a7048, 10, 20);
     else if (part === 'legL' || part === 'legR') { this._smoke(pos.clone().setY(0.5), 0x4a4036, 4, 5); this._debrisBurst(pos, 0x3a3f3a, 5, 14); }
     else this._debrisBurst(pos, 0x3a3f3a, 5, 14);
     this._smoke(pos, 0x2a2622, 3, 7);

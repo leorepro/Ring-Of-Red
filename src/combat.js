@@ -411,17 +411,19 @@ function updateAim(state, dt) {
   const tgt = PART_POS[me.targetPart];
   const cx = tgt.x * 0.72 + PART_POS.torso.x * 0.28;     // torso bias
   const cy = tgt.y * 0.72 + PART_POS.torso.y * 0.28;
-  let amp = 1.05 - 0.9 * acc01;
-  if (state.moving > 0) amp *= 1.7;                       // advancing spreads the aim
-  if (env.night) amp *= 1.15;
-  if (me.overheat || me.reload > 0) amp *= 1.25;
+  let amp = 0.7 - 0.6 * acc01;                            // gentler aim wander
+  if (state.moving > 0) amp *= 1.4;                       // advancing spreads the aim
+  if (me.overheat || me.reload > 0) amp *= 1.15;
   if (me.maxArmed) amp *= 0.22;                           // Maximum Attack steadies aim
   const T = state.t;
-  const sx = (Math.sin(T * 2.1) + 0.5 * Math.sin(T * 3.7 + 1)) * amp;
-  const sy = (Math.cos(T * 1.7) + 0.5 * Math.sin(T * 4.3)) * amp * 0.82;
+  const sx = (Math.sin(T * 1.9) + 0.5 * Math.sin(T * 3.3 + 1)) * amp;
+  const sy = (Math.cos(T * 1.5) + 0.5 * Math.sin(T * 3.9)) * amp * 0.82;
   state.aim.x = cx + sx;
   state.aim.y = cy + sy;
 }
+
+// the part the reticle is currently over (what would be hit) — for HUD hinting
+export function currentHitPart(state) { return hitPart(state.aim); }
 
 function infantryExchange(state, mp, fp) {
   const me = state.me, foe = state.foe;

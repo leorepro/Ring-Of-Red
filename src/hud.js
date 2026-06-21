@@ -1,7 +1,7 @@
 // ============================================================
 //  hud.js — gunner dashboard + locational-targeting overlay
 // ============================================================
-import { PARTS, PART_POS, PART_CFG, caps, weaponDef } from './combat.js';
+import { PARTS, PART_POS, PART_CFG, caps, weaponDef, currentHitPart } from './combat.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -118,12 +118,15 @@ export class Hud {
     this.el.reticle.style.setProperty('--rs', (0.7 + tighten * 0.7).toFixed(2));
     this.el.reticle.classList.toggle('armed', me.maxArmed);
 
-    // enemy part markers: coordination + selected target
+    // enemy part markers: coordination, selected target, and the part the
+    // reticle is currently over (lights up = will be hit)
+    const live = state.phase === 'battle' ? currentHitPart(state) : null;
     for (const p of PARTS) {
       const mk = this.markers[p];
       const co = Math.round(foe.parts[p].co);
       mk.querySelector('.pco').textContent = co;
       mk.classList.toggle('sel', me.targetPart === p);
+      mk.classList.toggle('live', p === live && co > 0);
       mk.classList.toggle('dead', co <= 0);
     }
     // our own coordination

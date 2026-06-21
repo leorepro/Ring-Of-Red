@@ -75,6 +75,10 @@ canvas#scene{position:fixed;inset:0;width:100%;height:100%;display:block;z-index
 .pmark .pco{font-family:var(--mono);font-size:.52rem;color:#cfe6a0}
 .pmark.sel .pdot{border-color:var(--amber);background:rgba(230,181,58,.35);box-shadow:0 0 10px rgba(230,181,58,.6)}
 .pmark.sel .plbl{color:var(--amber)}
+/* the part the reticle is over right now — lit = a hit will land here */
+.pmark.live .pdot{border-color:#7fffd0;background:rgba(120,255,200,.4);
+  box-shadow:0 0 14px rgba(120,255,200,.85);transform:scale(1.25)}
+.pmark.live .pco{color:#7fffd0}
 .pmark.dead .pdot{border-color:var(--enemy);background:rgba(192,68,58,.4)}
 .pmark.dead .pco{color:var(--enemy)}
 .reticle{position:absolute;left:50%;top:50%;width:84px;height:84px;
