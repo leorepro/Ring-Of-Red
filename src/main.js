@@ -5,6 +5,7 @@
 import { World } from './world.js';
 import { Hud } from './hud.js';
 import { bindControls } from './input.js';
+import { audio } from './audio.js';
 import { createState, update, tryFire, tryDodge, tryMove, trySkill, tryShell, setTarget, cycleTarget, cycleWeapon, PARTS, PART_CFG } from './combat.js';
 
 const world = new World(document.getElementById('scene'));
@@ -18,18 +19,24 @@ hud.onTarget = (part) => { if (running) setTarget(state, part); };
 bindControls({
   fire: () => running && tryFire(state),
   dodge: () => running && tryDodge(state),
-  move: () => running && tryMove(state),
-  skill: () => running && trySkill(state),
-  shell: () => running && tryShell(state),
-  target: () => running && cycleTarget(state),
-  weapon: () => running && cycleWeapon(state),
+  move: () => { if (running) { audio.ui(); tryMove(state); } },
+  skill: () => { if (running) { audio.ui(); trySkill(state); } },
+  shell: () => { if (running) { audio.ui(); tryShell(state); } },
+  target: () => { if (running) { audio.ui(); cycleTarget(state); } },
+  weapon: () => { if (running) { audio.switchW(); cycleWeapon(state); } },
 });
+
+// unlock audio on the first user gesture (mobile autoplay policy)
+const unlock = () => audio.resume();
+window.addEventListener('pointerdown', unlock);
+window.addEventListener('keydown', unlock);
 
 // ---- screen flow ----
 const titleEl = document.getElementById('title');
 const resultEl = document.getElementById('result');
 
 function startBattle() {
+  audio.resume();
   state = createState();
   titleEl.classList.add('hidden');
   resultEl.classList.add('hidden');
@@ -42,6 +49,7 @@ function startBattle() {
 function finish() {
   running = false;
   const win = state.phase === 'win';
+  win ? audio.win() : audio.lose();
   const tEl = document.getElementById('result-title');
   tEl.textContent = win ? 'TARGET DESTROYED' : (state.me.hp <= 0 ? 'AFW LOST' : 'TIME UP');
   tEl.className = 'result-title ' + (win ? 'win' : 'lose');
@@ -97,6 +105,7 @@ const SLOW = 0.14;             // world time scale during the slow-mo finish
 const cine = document.getElementById('cine');
 
 let last = performance.now();
+let prevOverheat = false;
 function frame(now) {
   let dt = (now - last) / 1000;
   last = now;
@@ -105,6 +114,8 @@ function frame(now) {
   if (running) {
     if (state.phase === 'battle') {
       update(state, dt);
+      if (state.me.overheat && !prevOverheat) audio.overheat();
+      prevOverheat = state.me.overheat;
       hud.render(state);
       // 'ending' (a gun finisher, possibly set from input or enemy AI) is
       // handled by the ending branch next frame; only immediate ends finish now

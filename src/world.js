@@ -4,6 +4,7 @@
 // ============================================================
 import * as THREE from 'three';
 import { rangeSway, PART_POS } from './combat.js';
+import { audio } from './audio.js';
 
 // engagement distances pulled far out — at this range a tiny aim wobble
 // walks the point of impact from the head down to the legs (sniper feel)
@@ -493,6 +494,7 @@ export class World {
       if (e.type === 'fire' && e.side === 'me') {
         // our hand-cannon recoil: muzzle flash + heavy kick + after-shudder
         this._muzzleFlash(this._myMuzzleWorld(), 0xffd27a);
+        audio.fire(e.weapon || 'cannon');
         this.kickRotVel.x += 1.0; this.kickRotVel.z += rnd() * 0.5;
         this.kickVel.y += 2.6; this.kickVel.z += 7.5;
         this.trauma = Math.max(this.trauma, 0.7);
@@ -507,8 +509,8 @@ export class World {
         if (e.kill) this._trackKill(from, target);
         this._projectile(from, target, col, (p) => {
           if (e.hit) {
-            if (e.shrapnel) { this._explosion(p, 34); this._sparks(p, 0xffd27a, 8, 18); }
-            else this._impactFx(e.part || 'torso', p, e.crit);
+            if (e.shrapnel) { this._explosion(p, 34); this._sparks(p, 0xffd27a, 8, 18); audio.explosion(false); }
+            else { this._impactFx(e.part || 'torso', p, e.crit); e.crit ? audio.crit() : audio.explosion(false); }
             this.kickVel.z += 1.2; this.trauma = Math.max(this.trauma, e.crit ? 0.5 : 0.3);
             if (e.kill) { this._explosion(p, 120); this._shockwave(p, 0xffffff, 32); this._killActive = false; this._killImpact = p.clone(); state.killLanded = true; }
           } else this._dirtGeyser(p);
@@ -519,6 +521,7 @@ export class World {
         const aimAt = this.camera.position.clone().add(new THREE.Vector3(rnd() * 2, -1, 2));
         const target = e.hit ? aimAt : aimAt.add(new THREE.Vector3((rnd() < 0 ? -1 : 1) * 18, 6 + Math.random() * 8, 0));
         this._muzzleFlash(from, 0xffae5a);
+        audio.enemyFire();
         if (e.kill) this._trackKill(from, target);
         this._projectile(from, target, e.hit ? 0xff8855 : 0xffcc66, (p) => {
           if (e.hit) {
@@ -528,6 +531,7 @@ export class World {
             this.trauma = 1; this.rumble = Math.max(this.rumble, 0.85); this._redFlash();
             const hitAt = this.camera.position.clone().add(new THREE.Vector3(rnd() * 6, -2, -10));
             this._sparks(hitAt, 0xffd27a, 14, 22); this._smoke(hitAt, 0x2a2622, 3, 7);
+            e.crit ? audio.crit() : audio.hitTaken();
             if (e.crit) { this._whiteFlash(); this._critText(); this._shockwave(hitAt, 0xffffff, 26); this.trauma = 1.2; }
             if (e.kill) { this._explosion(p, 120); this._killActive = false; this._killImpact = p.clone(); state.killLanded = true; }
           } else { this.kickVel.x += (Math.random() < 0.5 ? -1 : 1) * 3; this.trauma = Math.max(this.trauma, 0.25); }
@@ -536,6 +540,7 @@ export class World {
         const d = Math.random() < 0.5 ? -1 : 1;
         this.kickVel.x += d * 12; this.kickRotVel.z += d * 1.5;
         this.trauma = Math.max(this.trauma, 0.5);
+        audio.dodge();
       } else if (e.type === 'inffire') {
         this._infFlicker(e.side);
       }
@@ -568,6 +573,7 @@ export class World {
   // dramatic per-part destruction the moment a part's coordination hits 0
   _destroyPart(name, node) {
     const wp = node.getWorldPosition(new THREE.Vector3());
+    audio.explosion(true);
     node.traverse((o) => { if (o.material) { o.material = o.material.clone(); o.material.color.setHex(0x201b16); o.material.emissive && o.material.emissive.setHex(0x000000); } });
     if (name === 'head') {
       // head blown off — explode and detach upward
