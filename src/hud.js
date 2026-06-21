@@ -89,18 +89,29 @@ export class Hud {
       acc.className = 'acc' + (me.acc >= 60 ? ' hi' : '');
     }
 
-    // place markers + reticle on the projected enemy (tracks the real AFW)
+    // place markers + reticle on the projected enemy (tracks the real AFW).
+    // The enemy is a small distant figure, so expand the marker cluster around
+    // its centre to a readable minimum size while staying centred on it.
     const scr = state.screen;
     if (scr) {
+      const ps = scr.parts;
+      let cx = 0, cy = 0;
+      for (const p of PARTS) { cx += ps[p].x; cy += ps[p].y; }
+      cx /= PARTS.length; cy /= PARTS.length;
+      const extent = Math.max(ps.legL.y, ps.legR.y) - Math.min(ps.head.y, ps.torso.y);
+      const k = Math.max(1, 170 / Math.max(8, extent));
+      const place = (x, y) => ({ x: cx + (x - cx) * k, y: cy + (y - cy) * k });
       for (const p of PARTS) {
-        const sp = scr.parts[p];
-        this.markers[p].style.left = sp.x + 'px';
-        this.markers[p].style.top = sp.y + 'px';
+        const q = place(ps[p].x, ps[p].y);
+        this.markers[p].style.left = q.x + 'px';
+        this.markers[p].style.top = q.y + 'px';
       }
-      const rx = scr.torso.x + scr.dr.x * state.aim.x + scr.du.x * (state.aim.y - 0.45);
-      const ry = scr.torso.y + scr.dr.y * state.aim.x + scr.du.y * (state.aim.y - 0.45);
-      this.el.reticle.style.left = rx + 'px';
-      this.el.reticle.style.top = ry + 'px';
+      const r = place(
+        scr.torso.x + scr.dr.x * state.aim.x + scr.du.x * (state.aim.y - 0.45),
+        scr.torso.y + scr.dr.y * state.aim.x + scr.du.y * (state.aim.y - 0.45),
+      );
+      this.el.reticle.style.left = r.x + 'px';
+      this.el.reticle.style.top = r.y + 'px';
     }
     const tighten = me.overheat || me.reload > 0 ? 1 : (1 - me.acc / 100);
     this.el.reticle.style.setProperty('--rs', (0.7 + tighten * 0.7).toFixed(2));

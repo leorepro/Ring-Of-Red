@@ -87,10 +87,10 @@ canvas#scene{position:fixed;inset:0;width:100%;height:100%;display:block;z-index
 .reticle.armed .ret-ring{border-color:#ff7a6a;box-shadow:0 0 12px rgba(230,90,60,.7)}
 /* big accuracy %, centred over the lower scope like the original (not in a
    corner where a thumb covers it) */
-.acc{position:absolute;left:50%;top:64%;transform:translate(-50%,-50%);
-  font-family:var(--mono);font-weight:800;font-size:clamp(2rem,8vw,3.4rem);color:var(--amber);
-  text-shadow:0 0 14px rgba(0,0,0,.9);letter-spacing:.01em;pointer-events:none;white-space:nowrap}
-.acc small{font-size:.45em;opacity:.75}
+.acc{position:absolute;left:50%;top:62%;transform:translate(-50%,-50%);
+  font-family:var(--mono);font-weight:800;font-size:clamp(3rem,17vw,7rem);color:var(--amber);
+  text-shadow:0 0 18px rgba(0,0,0,.95);letter-spacing:.005em;pointer-events:none;white-space:nowrap;line-height:1}
+.acc small{font-size:.42em;opacity:.75}
 .acc.hi{color:#6fe0ff;text-shadow:0 0 16px rgba(80,200,255,.55)}
 .acc.locked{color:#9aa39d;font-size:clamp(1.1rem,4.4vw,1.7rem)}
 
@@ -99,7 +99,7 @@ canvas#scene{position:fixed;inset:0;width:100%;height:100%;display:block;z-index
   background:repeating-conic-gradient(rgba(230,181,58,.45) 0 0.5deg, transparent 0.5deg 5deg);
   -webkit-mask:radial-gradient(closest-side, transparent calc(100% - 9px), #000 calc(100% - 9px));
           mask:radial-gradient(closest-side, transparent calc(100% - 9px), #000 calc(100% - 9px))}
-.rangebox{position:absolute;left:50%;top:7%;transform:translateX(-50%);
+.rangebox{position:absolute;left:50%;top:64px;transform:translateX(-50%);
   display:flex;flex-direction:column;align-items:center;gap:4px;pointer-events:none}
 .range-top{font-family:var(--mono);font-weight:800;letter-spacing:.12em;font-size:.78rem;color:#dcebff;
   background:rgba(10,16,24,.82);border:1px solid rgba(120,160,200,.5);border-radius:4px;padding:.12rem .9rem}
@@ -242,21 +242,21 @@ canvas#scene{position:fixed;inset:0;width:100%;height:100%;display:block;z-index
 
 /* ===================== PORTRAIT (primary mobile) ===================== */
 @media (orientation:portrait){
-  /* gauges: a horizontal row tucked just under the top dashboard */
+  /* gauges: vertical stack on the LEFT, clear of the top-centre range box */
   .gauges{
-    left:50%;right:auto;top:74px;transform:translateX(-50%);
-    flex-direction:row;width:auto;gap:.7rem;
+    left:calc(.5rem + var(--safe-l));right:auto;top:30%;transform:none;
+    flex-direction:column;width:min(33vw,138px);gap:.5rem;
   }
-  .gauge{width:42vw;max-width:190px}
+  .gauge{width:auto;max-width:none}
 
-  /* support squad: compact strip on the right, below the gauges */
-  .squad{top:116px;right:calc(.5rem + var(--safe-r))}
+  /* support squad: compact strip on the right, below the dashboard */
+  .squad{top:118px;right:calc(.5rem + var(--safe-r))}
   .squad-row{flex-direction:column;gap:.2rem;align-items:flex-end}
   .sq{font-size:.5rem}
 
-  /* heat warning + banner shifted clear of the gauges row */
-  .heatwarn{top:44%}
-  .banner{top:30%}
+  /* heat warning + banner kept clear of the central ruler/% */
+  .heatwarn{top:34%}
+  .banner{top:26%}
 
   /* control deck: centered at the bottom for one-thumb reach */
   .deck{align-items:center;gap:.45rem;padding-bottom:calc(.5rem + var(--safe-b))}
