@@ -10,6 +10,9 @@ import { rangeSway, PART_POS } from './combat.js';
 const RANGE_DIST = { SHORT: 200, MEDIUM: 360, LONG: 520 };
 const ENEMY_SCALE = 4.8;               // ~1/8 of screen height at MEDIUM range
 const ENEMY_BASE_Y = 0.75 * ENEMY_SCALE - 0.6;   // keep the feet on the ground
+// our gunner rides atop our own AFW, so the sight is level with the enemy's
+// mid-body — looking straight across, not craning up at it
+const CAM_Y = ENEMY_BASE_Y + 6.5 * ENEMY_SCALE;
 
 // cold day vs night palettes
 const DAY = {
@@ -336,11 +339,11 @@ export class World {
       this._endingPrev = false;
       this.camera.position.set(
         this.kickPos.x + swayX + rumX + rnd() * rp,
-        7.6 + this.kickPos.y + bobY + rumY + rnd() * rp,
+        CAM_Y + this.kickPos.y + bobY + rumY + rnd() * rp,
         6 + this.kickPos.z + lurchZ + rnd() * rp * 0.5,
       );
       this.camera.rotation.set(
-        -0.04 + sy + pitchG + this.kickRot.x + rumPitch + rnd() * rr,
+        sy + pitchG + this.kickRot.x + rumPitch + rnd() * rr,
         sx + this.kickRot.y + rnd() * rr,
         rollZ + this.kickRot.z + rumRoll + rnd() * rr * 0.7,
       );
