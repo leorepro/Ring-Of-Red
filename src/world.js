@@ -15,12 +15,13 @@ const ENEMY_BASE_Y = 1.4 * ENEMY_SCALE - 0.6;    // keep the feet (~-1.4 local) 
 // mid-body — looking straight across, not craning up at it
 const CAM_Y = ENEMY_BASE_Y + 6.5 * ENEMY_SCALE;
 
-// cold day vs night palettes
+// bright clear-day vs night palettes
+// (day = blue sky + white clouds over rolling green country, per Ring of Red)
 const DAY = {
-  fog: 0xbcbaa6, sky: 0xc9c4ac, ground: 0x6f7560,
-  hemiSky: 0xd2dccf, hemiGround: 0x40453a, key: 0xfff2da, keyI: 1.5, ambI: 0.66,
-  skyTop: 0x6f8aa6, skyHorizon: 0xcbc6ae, sun: 0xffe6ad, sunCore: 0xfff4da,
-  sunScale: 500, sunOp: 0.95, cloud: 0xf3efe2, cloudOp: 0.55,
+  fog: 0xbcd8ec, sky: 0x6fb0e6, ground: 0x6f9048,
+  hemiSky: 0xcfe8ff, hemiGround: 0x586a38, key: 0xfff6e6, keyI: 2.0, ambI: 0.95,
+  skyTop: 0x3a86d6, skyHorizon: 0xd9ecf7, sun: 0xffe6ad, sunCore: 0xfff4da,
+  sunScale: 500, sunOp: 0.95, cloud: 0xffffff, cloudOp: 0.95,
 };
 const NIGHT = {
   // moonlit, cool-blue night — clearly readable, not pitch black
@@ -112,9 +113,57 @@ export class World {
     dome.renderOrder = -2;
     this.scene.add(dome);
 
-    // clean sky: no sun/clouds, only the gradient backdrop.
-    this._glowTex = this._radialTexture();   // still used by infantry muzzle flickers
-    this.sunGlow = null; this.sunCore = null; this.clouds = [];
+    this._glowTex = this._radialTexture();
+    this.sunGlow = null; this.sunCore = null;
+    this._cloudTex = this._cloudTexture();
+    this._buildClouds();
+  }
+
+  // soft puffy-cloud sprite texture (lumpy white blob, transparent edges)
+  _cloudTexture() {
+    const c = document.createElement('canvas'); c.width = c.height = 256;
+    const g = c.getContext('2d');
+    const blob = (x, y, r) => {
+      const grd = g.createRadialGradient(x, y, 0, x, y, r);
+      grd.addColorStop(0, 'rgba(255,255,255,1)');
+      grd.addColorStop(0.55, 'rgba(255,255,255,0.92)');
+      grd.addColorStop(1, 'rgba(255,255,255,0)');
+      g.fillStyle = grd; g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill();
+    };
+    for (let i = 0; i < 10; i++) blob(60 + Math.random() * 136, 90 + Math.random() * 76, 36 + Math.random() * 40);
+    return new THREE.CanvasTexture(c);
+  }
+
+  // drifting cumulus clouds — clusters of soft white sprites high over the field
+  _buildClouds() {
+    this.clouds = [];
+    for (let i = 0; i < 18; i++) {
+      const cloud = new THREE.Group();
+      const n = 3 + Math.floor(Math.random() * 3);
+      for (let j = 0; j < n; j++) {
+        const s = new THREE.Sprite(new THREE.SpriteMaterial({
+          map: this._cloudTex, color: 0xffffff, transparent: true,
+          opacity: 0.78 + Math.random() * 0.18, depthWrite: false, fog: false,
+        }));
+        const sc = 150 + Math.random() * 200;
+        s.scale.set(sc, sc * 0.6, 1);
+        s.position.set((Math.random() - 0.5) * sc * 1.3, (Math.random() - 0.5) * sc * 0.22, (Math.random() - 0.5) * sc * 0.7);
+        cloud.add(s);
+      }
+      cloud.position.set((Math.random() - 0.5) * 3000, 320 + Math.random() * 360, -400 - Math.random() * 1100);
+      cloud.userData.spd = 5 + Math.random() * 8;
+      this.scene.add(cloud); this.clouds.push(cloud);
+    }
+  }
+
+  // a small unit-marking decal (e.g. red "107"), drawn to a canvas texture
+  _markTexture(text, color) {
+    const c = document.createElement('canvas'); c.width = 128; c.height = 96;
+    const g = c.getContext('2d');
+    g.fillStyle = color; g.font = 'bold 78px monospace';
+    g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.fillText(text, 64, 52);
+    const t = new THREE.CanvasTexture(c); t.anisotropy = 4; return t;
   }
 
   _buildGround() {
@@ -134,7 +183,7 @@ export class World {
       pos.setY(i, h);
     }
     geo.computeVertexNormals();
-    this.groundMat = new THREE.MeshStandardMaterial({ color: DAY.ground, flatShading: true, roughness: 1, metalness: 0 });
+    this.groundMat = new THREE.MeshStandardMaterial({ color: DAY.ground, flatShading: true, roughness: 0.95, metalness: 0 });
     const ground = new THREE.Mesh(geo, this.groundMat);
     ground.receiveShadow = true;
     this.scene.add(ground);
@@ -149,13 +198,14 @@ export class World {
   // damage, projection and animation.
   _buildAFW({ enemy }) {
     const g = new THREE.Group();
-    // brighter, multi-tone armour so the mech reads with depth, not a black blob
-    const body  = enemy ? 0xa8854f : 0x74824a;   // main armour (lighter)
-    const body2 = enemy ? 0x86683b : 0x586539;   // secondary panels
-    const steel = enemy ? 0x7b838b : 0x6f777d;   // gunmetal joints (lighter)
-    const dark  = 0x444a52;                       // dark detail (not black)
-    const accent = enemy ? 0xd84a3a : 0x9ab05f;   // bright accent
-    const trim  = enemy ? 0xeebd4c : 0xc8d176;    // trim/stripes
+    // desert-tan armoured battle frame (Ring of Red AFW): warm sand camo with
+    // gunmetal joints and a red unit marking
+    const body  = enemy ? 0xc3a877 : 0x9aa06a;   // main sand armour
+    const body2 = enemy ? 0xa78a55 : 0x7c8350;   // darker camo panels
+    const steel = enemy ? 0x8b8d84 : 0x787b72;   // gunmetal joints
+    const dark  = 0x4a463c;                       // dark brown detail
+    const accent = enemy ? 0xb23a2c : 0x3f6f9a;   // red (enemy) / blue (ally) marking
+    const trim  = enemy ? 0x796238 : 0x47566a;   // muted trim
     const mat = (c, m = 0.4, r = 0.7) => new THREE.MeshStandardMaterial({ color: c, flatShading: true, roughness: r, metalness: m });
     const visMat = new THREE.MeshStandardMaterial({ color: 0x123, emissive: enemy ? 0xff5a3a : 0x6fd0ff, emissiveIntensity: 0.9, flatShading: true });
     const box = (w, h, d, c, m, r) => new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat(c, m, r));
@@ -175,6 +225,10 @@ export class World {
     add(torso, box(1.4, 1.0, 0.3, visMat), 0, 0.2, 2.0, false);   // chest sensor (glow)
     add(torso, box(2.0, 0.5, 0.25, trim), 0, -1.4, 1.95);    // accent stripe
     add(torso, box(1.0, 1.6, 0.3, accent), -1.7, 0.4, 1.75); // unit marking
+    // red "107" unit decal on the chest, like the reference frame
+    const mark = new THREE.Mesh(new THREE.PlaneGeometry(2.0, 1.5),
+      new THREE.MeshBasicMaterial({ map: this._markTexture(enemy ? '107' : '74', enemy ? '#c4392b' : '#3f6f9a'), transparent: true }));
+    mark.position.set(1.5, 0.5, 1.66); torso.add(mark);
     // back thruster pack
     add(torso, box(3.6, 3.2, 1.4, body2), 0, 0.4, -2.0);
     add(torso, cyl(0.6, 0.7, 1.4, dark), -1.0, -1.2, -2.6).rotation.x = Math.PI / 2;
@@ -200,14 +254,14 @@ export class World {
       add(arm, box(2.7, 0.8, 2.9, steel), 0, 1.1, 0);              // pauldron cap
       add(arm, box(0.6, 1.2, 0.6, accent), side * 1.25, 0.2, 0.2); // shoulder accent
       add(arm, box(1.6, 1.6, 2.2, body2), 0, -1.6, 0);            // upper arm
-      // cannon assembly pointing forward (-z)
+      // long low-recoil cannon pointing forward (-z), thin and far-reaching
       add(arm, box(1.8, 1.8, 3.4, steel), 0, -1.9, -2.2);         // breech housing
       add(arm, cyl(0.7, 0.7, 1.6, dark), 0, -1.9, -1.0);          // drum
-      const barrel = add(arm, cyl(0.55, 0.7, 6.4, steel), 0, -1.9, -5.6); barrel.rotation.x = Math.PI / 2;
-      add(arm, cyl(0.5, 0.5, 4.0, dark), 0, -1.9, -5.6).rotation.x = Math.PI / 2;  // bore
-      const brake = add(arm, cyl(1.0, 1.0, 1.0, dark), 0, -1.9, -8.6); brake.rotation.x = Math.PI / 2; // muzzle brake
-      add(arm, box(2.0, 0.3, 0.5, trim), 0, -2.85, -8.6, false);  // brake vents
-      const tip = new THREE.Object3D(); tip.position.set(0, -1.9, -9.2); arm.add(tip); arm.userData.tip = tip;
+      const barrel = add(arm, cyl(0.42, 0.6, 10.0, steel), 0, -1.9, -7.6); barrel.rotation.x = Math.PI / 2;
+      add(arm, cyl(0.34, 0.34, 6.0, dark), 0, -1.9, -7.6).rotation.x = Math.PI / 2;  // bore
+      const brake = add(arm, cyl(0.85, 0.85, 1.1, dark), 0, -1.9, -12.4); brake.rotation.x = Math.PI / 2; // muzzle brake
+      add(arm, box(1.7, 0.3, 0.5, trim), 0, -2.7, -12.4, false);  // brake vents
+      const tip = new THREE.Object3D(); tip.position.set(0, -1.9, -13.0); arm.add(tip); arm.userData.tip = tip;
       return arm;
     };
     const armL = buildArm(-1), armR = buildArm(1); g.add(armL, armR);
@@ -283,7 +337,7 @@ export class World {
     // slow cloud drift
     for (const c of this.clouds) {
       c.position.x += c.userData.spd * dt;
-      if (c.position.x > 1100) c.position.x = -1100;
+      if (c.position.x > 1700) c.position.x = -1700;
     }
 
     // Both AFWs are constantly marching forward: scroll the battlefield
