@@ -17,12 +17,19 @@ decide *how high a %* you dare fire at — knowing the gun **overheats**, the cl
 | Fire | **✕ 開火** | Fires the main gun at the *current* accuracy %. Then reloads + adds heat. |
 | Dodge | **L 迴避** | When the enemy's **裝填** gauge fills, the dodge button **arms** — tap it in time to evade their shot (but it resets your own aim). |
 | Move | **L1 移動** | Advance / retreat to change **range** (SHORT/MEDIUM/LONG): closer = higher accuracy & damage but the enemy hits harder. |
-| Skill | **△ 導向彈** | "Homing Shot" support soldier — locks your next shot to ≥90% accuracy (limited uses). |
+| Shell | **□ 彈種** | Switch ammo: **對甲 (AT)** wrecks the enemy AFW; **對人 (AP)** shreds its infantry/squads (and knocks out their bonuses) but barely dents armour. |
+| Maximum Attack | **△ 必殺** | The pilot's signature: arm a near-certain, heavy hit on the next shot (limited charges). |
 
-Desktop testing: **Space/J/X** = fire, **L/Shift** = dodge, **M** = move, **K** = skill.
+Desktop testing: **Space/J/X** = fire, **L/Shift** = dodge, **M** = move, **K** = Maximum Attack, **C** = switch shell.
 
-**Accuracy** is modified by **range**, **day/night**, and **land effect** — exactly the
-factors called out in the design doc, which is why night + long range stays stubbornly low.
+**Accuracy** is modified by **range**, **day/night**, **land effect**, and your **pilot skill ★**
+(higher skill draws an accurate aim faster). Night + long range stays stubbornly low.
+
+**Infantry & squads (faithful to the original):** each AFW carries 3 support squads from the
+six classes — anti-soldier **Infantry / Recon / Medic** and anti-mech **Shooter / Supply /
+Mechanic** — which fight automatically and grant passives: **Shooter** +AFW damage, **Supply**
+faster reload, **Mechanic** slow self-repair, **Medic** heals infantry, **Recon** faster aim,
+**Infantry** stronger anti-personnel fire. Lose your infantry and you lose their edge.
 
 ## Tech
 

@@ -9,7 +9,7 @@ export class Hud {
     this.el = {
       root: $('hud'),
       hpMe: $('hp-me'), hpFoe: $('hp-foe'),
-      hpnumMe: $('hpnum-me'), hpnumFoe: $('hpnum-foe'),
+      hpnumMe: $('hpnum-me'), hpnumFoe: $('hpnum-foe'), infFoe: $('inf-foe'),
       timer: $('timer'), range: $('range'), time: $('time'), land: $('land'),
       banner: $('banner'),
       reticle: $('reticle'), acc: $('acc'),
@@ -17,6 +17,7 @@ export class Hud {
       squadMe: $('squad-me'), infMe: $('inf-me'), starMe: $('star-me'),
       fire: $('btn-fire'), dodge: $('btn-dodge'), move: $('btn-move'),
       skill: $('btn-skill'), skillUses: $('skill-uses'), moveLbl: $('move-lbl'),
+      shell: $('btn-shell'), shellLbl: $('shell-lbl'),
     };
     this._squadBuilt = false;
   }
@@ -45,6 +46,7 @@ export class Hud {
     this.el.hpFoe.style.width = (foe.hp / foe.maxHp * 100) + '%';
     this.el.hpnumMe.textContent = Math.ceil(me.hp);
     this.el.hpnumFoe.textContent = Math.ceil(foe.hp);
+    this.el.infFoe.textContent = Math.ceil(foe.infantry);
 
     // timer
     const t = Math.ceil(state.time);
@@ -72,7 +74,7 @@ export class Hud {
     // reticle tightens as accuracy climbs
     const tighten = me.overheat || me.reload > 0 ? 1 : (1 - me.acc / 100);
     this.el.reticle.style.transform = `scale(${0.62 + tighten * 0.5})`;
-    this.el.reticle.style.borderColor = me.homingArmed ? 'rgba(127,208,127,.7)' : '';
+    this.el.reticle.style.borderColor = me.maxArmed ? 'rgba(230,90,90,.85)' : '';
 
     // gauges
     this.el.heat.style.width = me.heat + '%';
@@ -98,9 +100,14 @@ export class Hud {
     // buttons
     const canFire = state.phase === 'battle' && me.reload <= 0 && !me.overheat && state.moving <= 0 && me.acc >= 1;
     this.el.fire.disabled = !canFire;
+    this.el.fire.classList.toggle('max', me.maxArmed);
     this.el.dodge.classList.toggle('armed', state.dodge > 0);
-    this.el.skill.disabled = !(me.homing > 0 && !me.homingArmed && !me.squad[2].down && state.phase === 'battle');
-    this.el.skillUses.textContent = '×' + me.homing;
+    this.el.skill.disabled = !(me.max > 0 && !me.maxArmed && state.phase === 'battle');
+    this.el.skillUses.textContent = '×' + me.max;
+    this.el.skill.classList.toggle('armed', me.maxArmed);
+    this.el.shell.disabled = state.phase !== 'battle';
+    this.el.shellLbl.textContent = me.shell === 'AT' ? '對甲' : '對人';
+    this.el.shell.classList.toggle('ap', me.shell === 'AP');
     this.el.move.disabled = !(state.phase === 'battle' && state.moving <= 0 && me.reload <= 0);
     this.el.moveLbl.textContent = state.nextRangeDir === 'in' ? '前進' : '後退';
   }

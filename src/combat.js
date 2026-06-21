@@ -1,12 +1,14 @@
 // ============================================================
 //  combat.js — engagement-layer state machine & math
-//  Models the "four pressures" of Ring of Red's artillery duel:
-//  accuracy ramp × heat limit × timer × duel/dodge.
+//  A faithful-as-possible recreation of Ring of Red's ~90s AFW duel:
+//  accuracy ramp × heat/overheat × timer × duel/dodge, plus pilot skill,
+//  anti-armour/anti-personnel shells, Maximum Attacks, and the six
+//  infantry classes (anti-soldier vs anti-mech) fighting automatically.
 // ============================================================
 
 export const RANGES = ['SHORT', 'MEDIUM', 'LONG'];
 
-// per-range tuning: accuracy ceiling, ramp speed, damage
+// per-range tuning: accuracy ceiling, ramp speed, AFW damage, aim sway
 const RANGE_CFG = {
   SHORT:  { ceil: 92, ramp: 34, dmg: 96, sway: 0.5 },
   MEDIUM: { ceil: 80, ramp: 24, dmg: 64, sway: 1.0 },
@@ -18,23 +20,33 @@ const HEAT_AIM = 13;        // heat/sec while holding aim
 const HEAT_FIRE = 34;       // heat added per shot
 const HEAT_COOL = 22;       // heat lost/sec when not aiming
 const HEAT_RECOVER = 32;    // overheat clears below this
-const RELOAD_TIME = 3.4;    // seconds to reload main gun
+const RELOAD_TIME = 3.4;    // base seconds to reload main gun
+const ENEMY_RELOAD = 2.9;   // enemy reloads a touch faster (keeps pressure)
 const MOVE_TIME = 1.6;      // seconds to change range
 const DODGE_WINDOW = 1.25;  // reaction window to evade
 const ENEMY_FIRE_FLASH = 0.45;
+const INF_INTERVAL = 1.0;   // seconds between infantry crossfire exchanges
 
-const SQUADS = {
-  me: [
-    { name: 'Repair',   role: 'F.Guard' },
-    { name: 'Shrapnel', role: 'F.Guard' },
-    { name: 'Homing Shot', role: 'R.Guard' },
-  ],
-  foe: [
-    { name: 'G.Rcn',  role: 'F.Guard' },
-    { name: 'G.Med',  role: 'R.Guard' },
-    { name: 'G.Mech', role: 'R.Guard' },
-  ],
+// The six canonical infantry classes. side: AP = anti-soldier, AT = anti-mech.
+const CLASS = {
+  Infantry: { side: 'AP', role: 'F.Guard', zh: '步兵' },
+  Recon:    { side: 'AP', role: 'F.Guard', zh: '偵察' },
+  Medic:    { side: 'AP', role: 'R.Guard', zh: '醫療' },
+  Shooter:  { side: 'AT', role: 'F.Guard', zh: '射手' },
+  Supply:   { side: 'AT', role: 'R.Guard', zh: '補給' },
+  Mechanic: { side: 'AT', role: 'R.Guard', zh: '工兵' },
 };
+
+// Player rides an anti-mech trio (a dedicated AFW-killer); the generic
+// enemy fields an anti-personnel trio that chews your infantry.
+const SQUADS = {
+  me:  ['Shooter', 'Supply', 'Mechanic'],
+  foe: ['Shooter', 'Infantry', 'Medic'],
+};
+
+const mkSquad = (names) => names.map((name) => ({
+  name, zh: CLASS[name].zh, role: CLASS[name].role, side: CLASS[name].side, down: false,
+}));
 
 export function createState() {
   const night = Math.random() < 0.5;
@@ -42,32 +54,48 @@ export function createState() {
   return {
     phase: 'battle',            // battle | win | lose
     time: 90,
-    nextRangeDir: 'in',         // which way the next MOVE shifts range
+    nextRangeDir: 'in',
     env: { range: 'MEDIUM', night, land },
     me: {
       hp: 374, maxHp: 374,
       acc: 0, heat: 0, overheat: false, reload: 0,
-      infantry: 16, star: 3,
-      squad: SQUADS.me.map(s => ({ ...s, down: false })),
-      homing: 2,                // "Homing Shot" skill uses
-      homingArmed: false,
+      infantry: 16, maxInf: 16, star: 3, pilot: 3,    // pilot skill ★
+      squad: mkSquad(SQUADS.me),
+      shell: 'AT',              // current ammo: AT (anti-armour) / AP (anti-personnel)
+      max: 1, maxArmed: false,  // Maximum Attack charges
     },
     foe: {
-      hp: 340, maxHp: 340,
+      hp: 430, maxHp: 430,
       acc: 0, charge: 0, reload: 0,
-      infantry: 16, star: 2,
-      squad: SQUADS.foe.map(s => ({ ...s, down: false })),
+      infantry: 16, maxInf: 16, star: 2, pilot: 2,
+      squad: mkSquad(SQUADS.foe),
     },
-    moving: 0,                  // >0: changing range (locked out)
-    dodge: 0,                   // >0: dodge window open
-    pendingFoeAcc: 0,           // accuracy enemy fires at
-    flash: { me: 0, foe: 0 },   // muzzle-flash request timers (consumed by scene)
+    moving: 0,
+    dodge: 0,
+    pendingFoeAcc: 0,
+    infTick: 0,
+    flash: { me: 0, foe: 0 },
     banner: { text: '', kind: '', t: 0 },
-    fx: [],                     // queued visual events for the scene
+    fx: [],
   };
 }
 
-// accuracy ceiling for whoever is aiming, given environment
+// passive bonuses contributed by a unit's surviving squads
+function passives(unit) {
+  const has = (n) => unit.squad.some((s) => s.name === n && !s.down);
+  return {
+    afwDmg: has('Shooter') ? 1.18 : 1,     // Shooter: more power vs AFW
+    reload: has('Supply') ? 0.72 : 1,      // Supply: faster reload
+    afwRegen: has('Mechanic') ? 0.5 : 0,   // Mechanic: slowly repairs the AFW
+    infRegen: has('Medic') ? 1.0 : 0,      // Medic: heals own infantry
+    aim: has('Recon') ? 1.15 : 1,          // Recon: draws aim faster
+    apPower: has('Infantry') ? 1.5 : 1,    // Infantry: stronger anti-soldier fire
+  };
+}
+
+// how many anti-mech ground squads a unit still has (chip the enemy AFW)
+const atSquads = (unit) => unit.squad.filter((s) => !s.down && s.side === 'AT').length;
+
 function ceiling(env) {
   let c = RANGE_CFG[env.range].ceil + (env.land - 5) * 0.4;
   if (env.night) c -= NIGHT_PENALTY;
@@ -75,67 +103,73 @@ function ceiling(env) {
 }
 
 export function rangeSway(state) {
-  // residual aim wobble shrinks as accuracy approaches its ceiling
   const base = RANGE_CFG[state.env.range].sway * (state.env.night ? 1.4 : 1);
   const c = ceiling(state.env);
   return base * (1 - 0.85 * (state.me.acc / c));
 }
 
-function setBanner(state, text, kind, t = 1.1) {
-  state.banner = { text, kind, t };
-}
+function setBanner(state, text, kind, t = 1.1) { state.banner = { text, kind, t }; }
+const rand = (a, b) => a + Math.random() * (b - a);
 
-// ---- player intents (called from input) ----
+// ---- player intents ----
 
 export function tryFire(state) {
   const me = state.me;
   if (state.phase !== 'battle' || state.moving > 0) return;
   if (me.reload > 0 || me.overheat || me.acc < 1) return;
 
+  const pas = passives(me);
   let acc = me.acc;
-  if (me.homingArmed) { acc = Math.max(acc, 90); me.homingArmed = false; }
+  let maxShot = false;
+  if (me.maxArmed) { acc = Math.max(acc, 96); maxShot = true; me.maxArmed = false; }
 
   const hit = Math.random() * 100 < acc;
   state.flash.me = 0.12;
   state.fx.push({ type: 'fire', side: 'me', hit });
-  setBanner(state, 'PLAYER AFW — VS AFW FIRE', 'me', 0.7);
+  setBanner(state, maxShot ? '必殺・直擊射撃！' : 'PLAYER AFW — VS AFW FIRE', 'me', maxShot ? 1.1 : 0.7);
 
   if (hit) {
-    const dmg = Math.round(RANGE_CFG[state.env.range].dmg * (0.85 + Math.random() * 0.3));
-    state.foe.hp = Math.max(0, state.foe.hp - dmg);
-    state.fx.push({ type: 'impact', side: 'foe', dmg });
-    if (Math.random() < 0.4) knockSquad(state.foe);
+    const base = RANGE_CFG[state.env.range].dmg * (0.85 + Math.random() * 0.3);
+    if (me.shell === 'AT') {
+      let dmg = Math.round(base * pas.afwDmg * (maxShot ? 1.7 : 1));
+      state.foe.hp = Math.max(0, state.foe.hp - dmg);
+      state.fx.push({ type: 'impact', side: 'foe', dmg });
+      if (Math.random() < 0.3) knockSquad(state.foe);
+    } else {
+      // anti-personnel: shreds enemy infantry & squads, light vs armour
+      const inf = Math.round(rand(5, 9) * (maxShot ? 1.8 : 1));
+      state.foe.infantry = Math.max(0, state.foe.infantry - inf);
+      const dmg = Math.round(base * 0.28);
+      state.foe.hp = Math.max(0, state.foe.hp - dmg);
+      state.fx.push({ type: 'impact', side: 'foe', dmg, shrapnel: true });
+      if (Math.random() < 0.6) knockSquad(state.foe);
+      setBanner(state, `對人彈命中 — 敵步兵 −${inf}`, 'me', 1.0);
+    }
     if (state.foe.hp <= 0) endBattle(state, 'win');
   } else {
     state.fx.push({ type: 'miss', side: 'foe' });
   }
   me.acc = 0;
-  me.reload = RELOAD_TIME;
+  me.reload = RELOAD_TIME * pas.reload;
   me.heat = Math.min(100, me.heat + HEAT_FIRE);
 }
 
 export function tryDodge(state) {
-  if (state.phase !== 'battle') return;
-  if (state.dodge > 0) {
-    // success — negate the incoming shot, but it costs your aim
-    state.dodge = 0;
-    state.pendingFoeAcc = 0;
-    state.foe.charge = 0;
-    state.foe.reload = RELOAD_TIME;
-    state.me.acc = 0;
-    state.me.heat = Math.min(100, state.me.heat + 10);
-    state.fx.push({ type: 'evade' });
-    setBanner(state, '迴避成功 EVADED', 'evade', 1.0);
-  }
+  if (state.phase !== 'battle' || state.dodge <= 0) return;
+  state.dodge = 0;
+  state.pendingFoeAcc = 0;
+  state.foe.charge = 0;
+  state.foe.reload = RELOAD_TIME;
+  state.me.acc = 0;
+  state.me.heat = Math.min(100, state.me.heat + 10);
+  state.fx.push({ type: 'evade' });
+  setBanner(state, '迴避成功 EVADED', 'evade', 1.0);
 }
 
 export function tryMove(state) {
   if (state.phase !== 'battle' || state.moving > 0 || state.me.reload > 0) return;
-  // cycle SHORT <-> MEDIUM <-> LONG, toward whichever we aren't at the edge of
   const i = RANGES.indexOf(state.env.range);
-  const next = state.nextRangeDir === 'in'
-    ? Math.max(0, i - 1)
-    : Math.min(2, i + 1);
+  const next = state.nextRangeDir === 'in' ? Math.max(0, i - 1) : Math.min(2, i + 1);
   if (next === i) {
     state.nextRangeDir = state.nextRangeDir === 'in' ? 'out' : 'in';
     return tryMove(state);
@@ -145,37 +179,40 @@ export function tryMove(state) {
   state.me.acc = 0;
 }
 
+// Maximum Attack — the pilot's signature: arm a near-certain, heavy shot.
 export function trySkill(state) {
   const me = state.me;
-  if (state.phase !== 'battle' || me.homing <= 0 || me.homingArmed) return;
-  if (me.squad[2].down) return;     // Homing Shot soldier knocked out
-  me.homing -= 1;
-  me.homingArmed = true;
-  setBanner(state, '導向彈 裝填 — 下一發鎖定', 'me', 1.2);
+  if (state.phase !== 'battle' || me.max <= 0 || me.maxArmed) return;
+  me.max -= 1;
+  me.maxArmed = true;
+  setBanner(state, '必殺技 構え — 下一發必中重擊', 'me', 1.3);
+}
+
+// toggle ammunition between anti-armour and anti-personnel
+export function tryShell(state) {
+  if (state.phase !== 'battle') return;
+  const me = state.me;
+  me.shell = me.shell === 'AT' ? 'AP' : 'AT';
+  setBanner(state, me.shell === 'AT' ? '切換・對甲彈' : '切換・對人彈', 'me', 0.8);
 }
 
 function knockSquad(unit) {
-  const alive = unit.squad.filter(s => !s.down);
+  const alive = unit.squad.filter((s) => !s.down);
   if (alive.length) {
     alive[Math.floor(Math.random() * alive.length)].down = true;
     unit.infantry = Math.max(0, unit.infantry - (3 + Math.floor(Math.random() * 4)));
   }
 }
 
-function endBattle(state, outcome) {
-  state.phase = outcome;
-  state.dodge = 0;
-}
+function endBattle(state, outcome) { state.phase = outcome; state.dodge = 0; }
 
 // ---- main tick ----
 
 export function update(state, dt) {
   if (state.phase !== 'battle') return;
 
-  // banner fade
   if (state.banner.t > 0) state.banner.t -= dt;
 
-  // timer
   state.time -= dt;
   if (state.time <= 0) {
     state.time = 0;
@@ -186,6 +223,13 @@ export function update(state, dt) {
   }
 
   const me = state.me, foe = state.foe, env = state.env;
+  const mp = passives(me), fp = passives(foe);
+
+  // squad regen (Mechanic repairs AFW, Medic heals infantry)
+  if (mp.afwRegen) me.hp = Math.min(me.maxHp, me.hp + mp.afwRegen * dt);
+  if (fp.afwRegen) foe.hp = Math.min(foe.maxHp, foe.hp + fp.afwRegen * dt);
+  if (mp.infRegen) me.infantry = Math.min(me.maxInf, me.infantry + mp.infRegen * dt);
+  if (fp.infRegen) foe.infantry = Math.min(foe.maxInf, foe.infantry + fp.infRegen * dt);
 
   // movement lockout
   if (state.moving > 0) {
@@ -193,17 +237,15 @@ export function update(state, dt) {
     if (state.moving <= 0) {
       state.moving = 0;
       env.range = state._moveTarget;
-      // keep the MOVE button pointing somewhere valid
       const i = RANGES.indexOf(env.range);
       if (i === 0) state.nextRangeDir = 'out';
       else if (i === 2) state.nextRangeDir = 'in';
     }
   }
 
-  // player reload
   if (me.reload > 0) me.reload = Math.max(0, me.reload - dt);
 
-  // heat / aim
+  // heat / aim — pilot skill and Recon speed up the aim draw
   const canAim = me.reload <= 0 && state.moving <= 0 && !me.overheat;
   if (me.overheat) {
     me.heat = Math.max(0, me.heat - HEAT_COOL * dt);
@@ -212,7 +254,8 @@ export function update(state, dt) {
   } else if (canAim) {
     const c = ceiling(env);
     const cfg = RANGE_CFG[env.range];
-    const rate = cfg.ramp * (0.4 + 0.6 * (1 - me.acc / c));
+    const skill = 0.65 + 0.18 * me.pilot;          // ★ pilot skill
+    const rate = cfg.ramp * (0.4 + 0.6 * (1 - me.acc / c)) * skill * mp.aim;
     me.acc = Math.min(c, me.acc + rate * dt);
     me.heat = Math.min(100, me.heat + HEAT_AIM * dt);
     if (me.heat >= 100) { me.overheat = true; me.acc = 0; }
@@ -220,38 +263,65 @@ export function update(state, dt) {
     me.heat = Math.max(0, me.heat - HEAT_COOL * dt);
   }
 
-  // ---- enemy AI ----
-  updateEnemy(state, dt);
+  updateEnemy(state, dt, fp);
 
-  // dodge window countdown -> resolve incoming shot
+  // infantry crossfire (the ground/crew squads fight automatically)
+  state.infTick += dt;
+  if (state.infTick >= INF_INTERVAL) {
+    state.infTick -= INF_INTERVAL;
+    infantryExchange(state, mp, fp);
+  }
+
   if (state.dodge > 0) {
     state.dodge -= dt;
-    if (state.dodge <= 0) {
-      state.dodge = 0;
-      resolveEnemyShot(state);
-    }
+    if (state.dodge <= 0) { state.dodge = 0; resolveEnemyShot(state); }
   }
   if (state.flash.foe > 0) state.flash.foe = Math.max(0, state.flash.foe - dt);
   if (state.flash.me > 0) state.flash.me = Math.max(0, state.flash.me - dt);
 }
 
-function updateEnemy(state, dt) {
+function infantryExchange(state, mp, fp) {
+  const me = state.me, foe = state.foe;
+  // our infantry: attrite enemy soldiers; anti-mech squads chip the enemy AFW
+  if (me.infantry > 0 && foe.hp > 0) {
+    foe.infantry = Math.max(0, foe.infantry - rand(0.4, 1.0));
+    const at = atSquads(me);
+    if (at > 0) {
+      const chip = at * rand(0.6, 1.4) * (me.infantry / me.maxInf);
+      foe.hp = Math.max(0, foe.hp - chip);
+      state.fx.push({ type: 'inffire', side: 'me' });
+      if (foe.hp <= 0) return endBattle(state, 'win');
+    }
+  }
+  // enemy infantry: their anti-personnel trio chews our soldiers harder
+  if (foe.infantry > 0 && me.hp > 0) {
+    me.infantry = Math.max(0, me.infantry - rand(0.6, 1.4) * fp.apPower);
+    const at = atSquads(foe);
+    if (at > 0) {
+      const chip = at * rand(0.6, 1.2) * (foe.infantry / foe.maxInf);
+      me.hp = Math.max(0, me.hp - chip);
+      if (me.hp <= 0) return endBattle(state, 'lose');
+    }
+    state.fx.push({ type: 'inffire', side: 'foe' });
+  }
+}
+
+function updateEnemy(state, dt, fp) {
   const foe = state.foe, env = state.env;
   if (foe.reload > 0) { foe.reload = Math.max(0, foe.reload - dt); return; }
-  if (state.dodge > 0) return; // already committed to a shot
+  if (state.dodge > 0) return;
 
-  // enemy charges its shot; speed scales with how close it is + difficulty
   const c = ceiling(env);
-  const speed = 14 + (RANGES.indexOf(env.range) === 0 ? 5 : 0); // %/sec of charge
+  const skill = 0.8 + 0.14 * foe.pilot;
+  const speed = (18 + (RANGES.indexOf(env.range) === 0 ? 6 : 0)) * skill;
   foe.charge = Math.min(100, foe.charge + speed * dt);
   foe.acc = Math.min(c, (foe.charge / 100) * c);
 
   if (foe.charge >= 100) {
-    // commit: open the dodge window for the player
     foe.charge = 0;
     state.pendingFoeAcc = foe.acc;
     state.dodge = DODGE_WINDOW;
-    state.flash.foe = ENEMY_FIRE_FLASH; // wind-up tell
+    state.flash.foe = ENEMY_FIRE_FLASH;
     setBanner(state, 'ENEMY AFW — VS AFW FIRE', 'foe', DODGE_WINDOW);
   }
 }
@@ -262,7 +332,7 @@ function resolveEnemyShot(state) {
   state.fx.push({ type: 'fire', side: 'foe', hit: true });
   const hit = Math.random() * 100 < state.pendingFoeAcc;
   if (hit) {
-    const dmg = Math.round(RANGE_CFG[state.env.range].dmg * 0.95 * (0.8 + Math.random() * 0.4));
+    const dmg = Math.round(RANGE_CFG[state.env.range].dmg * 1.08 * (0.8 + Math.random() * 0.4));
     state.me.hp = Math.max(0, state.me.hp - dmg);
     state.fx.push({ type: 'impact', side: 'me', dmg });
     setBanner(state, `被命中 −${dmg}`, 'hit', 1.0);
@@ -273,5 +343,5 @@ function resolveEnemyShot(state) {
     setBanner(state, '對方失準 MISS', 'evade', 0.9);
   }
   state.pendingFoeAcc = 0;
-  foe.reload = RELOAD_TIME;
+  foe.reload = ENEMY_RELOAD;
 }

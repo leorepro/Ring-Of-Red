@@ -5,7 +5,7 @@
 import { World } from './world.js';
 import { Hud } from './hud.js';
 import { bindControls } from './input.js';
-import { createState, update, tryFire, tryDodge, tryMove, trySkill } from './combat.js';
+import { createState, update, tryFire, tryDodge, tryMove, trySkill, tryShell } from './combat.js';
 
 const world = new World(document.getElementById('scene'));
 const hud = new Hud();
@@ -18,6 +18,7 @@ bindControls({
   dodge: () => running && tryDodge(state),
   move: () => running && tryMove(state),
   skill: () => running && trySkill(state),
+  shell: () => running && tryShell(state),
 });
 
 // ---- screen flow ----

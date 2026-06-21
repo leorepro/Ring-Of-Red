@@ -47,7 +47,7 @@
       <div class="dash-side foe">
         <div class="tag">ENEMY AFW</div>
         <div class="hpwrap"><div id="hp-foe" class="hp foe"></div></div>
-        <div class="hpnum"><span id="hpnum-foe">220</span> HP</div>
+        <div class="hpnum"><span id="hpnum-foe">220</span> HP · 步兵 <span id="inf-foe">16</span></div>
       </div>
     </header>
 
@@ -87,18 +87,25 @@
 
     <!-- control deck -->
     <div class="deck">
-      <button id="btn-move" class="btn small">
-        <span class="k">L1</span>移動<small id="move-lbl">前進</small>
-      </button>
-      <button id="btn-skill" class="btn small">
-        <span class="k">△</span><small id="skill-lbl">導向彈</small><i id="skill-uses">×2</i>
-      </button>
-      <button id="btn-dodge" class="btn dodge">
-        <span class="k">L</span>迴避
-      </button>
-      <button id="btn-fire" class="btn fire">
-        <span class="k">✕</span>開火
-      </button>
+      <div class="deck-aux">
+        <button id="btn-move" class="btn small">
+          <span class="k">L1</span>移動<small id="move-lbl">前進</small>
+        </button>
+        <button id="btn-shell" class="btn small">
+          <span class="k">□</span>彈種<small id="shell-lbl">對甲</small>
+        </button>
+        <button id="btn-skill" class="btn small">
+          <span class="k">△</span>必殺<i id="skill-uses">×1</i>
+        </button>
+      </div>
+      <div class="deck-main">
+        <button id="btn-dodge" class="btn dodge">
+          <span class="k">L</span>迴避
+        </button>
+        <button id="btn-fire" class="btn fire">
+          <span class="k">✕</span>開火
+        </button>
+      </div>
     </div>
   </div>
 

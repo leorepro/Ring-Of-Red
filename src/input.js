@@ -15,8 +15,10 @@ export function bindControls(actions) {
   tap(document.getElementById('btn-dodge'), actions.dodge);
   tap(document.getElementById('btn-move'), actions.move);
   tap(document.getElementById('btn-skill'), actions.skill);
+  tap(document.getElementById('btn-shell'), actions.shell);
 
-  // keyboard for desktop testing (✕=Space/J fire, L dodge, M move, K skill)
+  // keyboard for desktop testing
+  // ✕=Space/J fire, L dodge, M move, K Maximum Attack, C switch shell
   window.addEventListener('keydown', (e) => {
     if (e.repeat) return;
     switch (e.key.toLowerCase()) {
@@ -24,6 +26,7 @@ export function bindControls(actions) {
       case 'l': case 'shift': actions.dodge(); break;
       case 'm': actions.move(); break;
       case 'k': case 't': actions.skill(); break;
+      case 'c': actions.shell(); break;
     }
   });
 

@@ -105,6 +105,7 @@ export class World {
 
     // sun / moon glow toward the key light
     const tex = this._radialTexture();
+    this._glowTex = tex;
     const dir = new THREE.Vector3(-30, 46, -10).normalize().multiplyScalar(360);
     const sprite = (size, color, op) => {
       const s = new THREE.Sprite(new THREE.SpriteMaterial({
@@ -430,6 +431,8 @@ export class World {
         this.kickVel.x += d * 12;
         this.kickRotVel.z += d * 1.5;
         this.trauma = Math.max(this.trauma, 0.5);
+      } else if (e.type === 'inffire') {
+        this._infFlicker(e.side);
       }
       if (e.type === 'fire' && e.side === 'me') {
         this._tracer(this._myMuzzleWorld(), this._enemy.position.clone().setY(5.5), e.hit ? 0xfff0b0 : 0xffcc66, e.hit);
@@ -456,6 +459,26 @@ export class World {
       life -= dt; const k = Math.max(0, life / 0.16);
       light.intensity = 8 * k; spr.material.opacity = k; spr.scale.setScalar(1 + (1 - k) * 1.6);
       if (life <= 0) { this.scene.remove(light, spr); spr.geometry.dispose(); spr.material.dispose(); return false; }
+      return true;
+    });
+  }
+
+  // tiny gunfire flicker for the supporting infantry crossfire
+  _infFlicker(side) {
+    const j = () => (Math.random() - 0.5);
+    const pos = side === 'me'
+      ? this.camera.position.clone().add(new THREE.Vector3(j() * 9, -6.5, -12 + j() * 5))
+      : this._enemy.position.clone().add(new THREE.Vector3(j() * 6, -1.6, 3 + j() * 2));
+    const m = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: this._glowTex, color: side === 'me' ? 0xffe0a0 : 0xffcf9a,
+      transparent: true, opacity: 0.9, depthWrite: false, blending: THREE.AdditiveBlending,
+    }));
+    m.position.copy(pos); m.scale.setScalar(2 + Math.random() * 1.6);
+    this.scene.add(m);
+    let life = 0.12;
+    this.effects.push((dt) => {
+      life -= dt; m.material.opacity = Math.max(0, life / 0.12) * 0.9;
+      if (life <= 0) { this.scene.remove(m); m.material.dispose(); return false; }
       return true;
     });
   }
