@@ -10,12 +10,12 @@ export const RANGES = ['SHORT', 'MEDIUM', 'LONG'];
 
 // per-range tuning: accuracy ceiling, ramp speed, AFW damage, aim sway
 const RANGE_CFG = {
-  SHORT:  { ceil: 92, ramp: 34, dmg: 96, sway: 0.5 },
-  MEDIUM: { ceil: 80, ramp: 24, dmg: 64, sway: 1.0 },
-  LONG:   { ceil: 64, ramp: 16, dmg: 44, sway: 1.7 },
+  SHORT:  { ceil: 98, ramp: 46, dmg: 96, sway: 0.5 },
+  MEDIUM: { ceil: 92, ramp: 36, dmg: 64, sway: 1.0 },
+  LONG:   { ceil: 82, ramp: 27, dmg: 44, sway: 1.7 },
 };
 
-const NIGHT_PENALTY = 18;   // night drops the accuracy ceiling
+const NIGHT_PENALTY = 10;   // night drops the accuracy ceiling
 const HEAT_AIM = 13;        // heat/sec while holding aim
 const HEAT_FIRE = 34;       // heat added per shot
 const HEAT_COOL = 22;       // heat lost/sec when not aiming

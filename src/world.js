@@ -5,21 +5,24 @@
 import * as THREE from 'three';
 import { rangeSway } from './combat.js';
 
-const RANGE_DIST = { SHORT: 24, MEDIUM: 42, LONG: 66 };
+// engagement distances pulled way out for a long-range artillery feel
+const RANGE_DIST = { SHORT: 120, MEDIUM: 210, LONG: 330 };
+const ENEMY_SCALE = 3;                 // enlarge the far AFW so it stays readable
+const ENEMY_BASE_Y = 2.2 * ENEMY_SCALE - 1.6;
 
 // cold day vs night palettes
 const DAY = {
   fog: 0xbcbaa6, sky: 0xc9c4ac, ground: 0x646a58,
   hemiSky: 0xc2ccbe, hemiGround: 0x363b30, key: 0xfff0d6, keyI: 1.28, ambI: 0.5,
   skyTop: 0x6f8aa6, skyHorizon: 0xcbc6ae, sun: 0xffe6ad, sunCore: 0xfff4da,
-  sunScale: 180, sunOp: 0.95, cloud: 0xf3efe2, cloudOp: 0.55,
+  sunScale: 500, sunOp: 0.95, cloud: 0xf3efe2, cloudOp: 0.55,
 };
 const NIGHT = {
   // moonlit, cool-blue night — clearly readable, not pitch black
   fog: 0x2c3744, sky: 0x1b2330, ground: 0x3c473f,
   hemiSky: 0x6f8198, hemiGround: 0x2a302c, key: 0xc2d4ee, keyI: 0.8, ambI: 0.55,
   skyTop: 0x0d1320, skyHorizon: 0x2b3643, sun: 0xb6c6dc, sunCore: 0xe6eefa,
-  sunScale: 100, sunOp: 0.62, cloud: 0x3a4757, cloudOp: 0.35,
+  sunScale: 280, sunOp: 0.62, cloud: 0x3a4757, cloudOp: 0.35,
 };
 
 export class World {
@@ -31,7 +34,7 @@ export class World {
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
     this.scene = new THREE.Scene();
-    this.camera = new THREE.PerspectiveCamera(46, 1, 0.1, 600);
+    this.camera = new THREE.PerspectiveCamera(46, 1, 0.1, 2500);
 
     this.dist = RANGE_DIST.MEDIUM;
     this.targetDist = this.dist;
@@ -53,6 +56,7 @@ export class World {
     this._buildSky();
     this._buildGround();
     this._enemy = this._buildAFW({ enemy: true });
+    this._enemy.scale.setScalar(ENEMY_SCALE);
     this.scene.add(this._enemy);
     this._buildPlayerBarrel();
 
@@ -94,7 +98,7 @@ export class World {
       offset: { value: 0.06 }, exponent: { value: 0.85 },
     };
     const dome = new THREE.Mesh(
-      new THREE.SphereGeometry(450, 24, 16),
+      new THREE.SphereGeometry(1600, 24, 16),
       new THREE.ShaderMaterial({
         side: THREE.BackSide, depthWrite: false, fog: false, uniforms: this.skyU,
         vertexShader: 'varying vec3 vD; void main(){ vD=normalize(position); gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }',
@@ -106,7 +110,7 @@ export class World {
     // sun / moon glow toward the key light
     const tex = this._radialTexture();
     this._glowTex = tex;
-    const dir = new THREE.Vector3(-30, 46, -10).normalize().multiplyScalar(360);
+    const dir = new THREE.Vector3(-30, 46, -10).normalize().multiplyScalar(1000);
     const sprite = (size, color, op) => {
       const s = new THREE.Sprite(new THREE.SpriteMaterial({
         map: tex, color, transparent: true, opacity: op,
@@ -126,28 +130,28 @@ export class World {
         depthWrite: false,
       }));
       const ang = (i / 6) * Math.PI * 2 + Math.random();
-      const r = 300 + Math.random() * 60;
-      m.position.set(Math.cos(ang) * r, 40 + Math.random() * 70, -Math.abs(Math.sin(ang)) * r - 40);
-      m.scale.set(140 + Math.random() * 120, 46 + Math.random() * 26, 1);
-      m.renderOrder = -1; m.userData.spd = 1.5 + Math.random() * 2;
+      const r = 850 + Math.random() * 250;
+      m.position.set(Math.cos(ang) * r, 160 + Math.random() * 220, -Math.abs(Math.sin(ang)) * r - 120);
+      m.scale.set(420 + Math.random() * 360, 130 + Math.random() * 80, 1);
+      m.renderOrder = -1; m.userData.spd = 4 + Math.random() * 5;
       this.clouds.push(m); this.scene.add(m);
     }
   }
 
   _buildGround() {
-    this.scene.fog = new THREE.Fog(DAY.fog, 30, 180);
+    this.scene.fog = new THREE.Fog(DAY.fog, 80, 560);
     this.scene.background = new THREE.Color(DAY.sky);
 
-    // low-poly displaced terrain
-    const geo = new THREE.PlaneGeometry(600, 600, 60, 60);
+    // large low-poly displaced terrain (battlefield is long now)
+    const geo = new THREE.PlaneGeometry(2600, 2600, 110, 110);
     geo.rotateX(-Math.PI / 2);
     const pos = geo.attributes.position;
     for (let i = 0; i < pos.count; i++) {
       const x = pos.getX(i), z = pos.getZ(i);
       const r = Math.hypot(x, z);
-      const h = Math.sin(x * 0.06) * Math.cos(z * 0.05) * 1.6
-              + Math.sin(x * 0.013 + z * 0.017) * 3.2
-              - Math.max(0, 1 - r / 30) * 1.2; // slight bowl near the duel
+      const h = Math.sin(x * 0.045) * Math.cos(z * 0.04) * 2.0
+              + Math.sin(x * 0.011 + z * 0.014) * 4.0
+              - Math.max(0, 1 - r / 60) * 1.2; // gentle bowl near the duel
       pos.setY(i, h);
     }
     geo.computeVertexNormals();
@@ -156,27 +160,29 @@ export class World {
     ground.receiveShadow = true;
     this.scene.add(ground);
 
-    // scattered low-poly debris / ruins for depth
+    // scattered low-poly debris / ruins spread across the long battlefield.
+    // Kept in a list so they can scroll toward the camera (forward-march cue).
+    this.debris = [];
     const rockMat = new THREE.MeshStandardMaterial({ color: 0x4a4f47, flatShading: true, roughness: 1 });
     const ruinMat = new THREE.MeshStandardMaterial({ color: 0x3c3a36, flatShading: true, roughness: 1 });
-    for (let i = 0; i < 60; i++) {
-      const ang = Math.random() * Math.PI * 2;
-      const rad = 26 + Math.random() * 150;
-      const x = Math.cos(ang) * rad, z = -Math.abs(Math.sin(ang) * rad) - 6;
+    this._zNear = 30; this._zFar = -560;          // scroll wrap band
+    for (let i = 0; i < 150; i++) {
+      const x = (Math.random() - 0.5) * 520;
+      const z = this._zFar + Math.random() * (this._zNear - this._zFar);
       let m;
       if (Math.random() < 0.35) {
-        m = new THREE.Mesh(new THREE.BoxGeometry(2 + Math.random() * 5, 3 + Math.random() * 9, 2 + Math.random() * 4), ruinMat);
+        m = new THREE.Mesh(new THREE.BoxGeometry(2 + Math.random() * 7, 3 + Math.random() * 12, 2 + Math.random() * 5), ruinMat);
         m.position.set(x, m.geometry.parameters.height / 2 - 1, z);
         m.rotation.y = Math.random() * Math.PI;
-        m.rotation.z = (Math.random() - 0.5) * 0.25;
+        m.rotation.z = (Math.random() - 0.5) * 0.22;
       } else {
-        const s = 0.8 + Math.random() * 2.4;
+        const s = 0.9 + Math.random() * 3.0;
         m = new THREE.Mesh(new THREE.IcosahedronGeometry(s, 0), rockMat);
         m.position.set(x, s * 0.5 - 0.6, z);
         m.rotation.set(Math.random(), Math.random(), Math.random());
       }
       m.castShadow = true; m.receiveShadow = true;
-      this.scene.add(m);
+      this.debris.push(m); this.scene.add(m);
     }
   }
 
@@ -267,8 +273,8 @@ export class World {
     this.lastNight = night;
     const p = night ? NIGHT : DAY;
     this.scene.fog.color.setHex(p.fog);
-    this.scene.fog.near = night ? 30 : 30;
-    this.scene.fog.far = night ? 175 : 180;
+    this.scene.fog.near = night ? 60 : 90;
+    this.scene.fog.far = night ? 440 : 580;
     this.scene.background.setHex(p.sky);
     this.groundMat.color.setHex(p.ground);
     this.hemi.color.setHex(p.hemiSky); this.hemi.groundColor.setHex(p.hemiGround);
@@ -290,23 +296,39 @@ export class World {
     // slow cloud drift
     for (const c of this.clouds) {
       c.position.x += c.userData.spd * dt;
-      if (c.position.x > 340) c.position.x = -340;
+      if (c.position.x > 1100) c.position.x = -1100;
+    }
+
+    // Both AFWs are constantly marching forward: scroll the battlefield
+    // toward the camera (faster while relocating range) so the ground and
+    // debris flow past, selling the advance without breaking the range system.
+    const marching = state.moving > 0;
+    const scroll = (marching ? 40 : 12) * dt;
+    if (this.debris) {
+      for (const m of this.debris) {
+        m.position.z += scroll;
+        if (m.position.z > this._zNear) {
+          m.position.z = this._zFar;
+          m.position.x = (Math.random() - 0.5) * 520;
+        }
+      }
     }
 
     // distance follows the current range
     this.targetDist = RANGE_DIST[state.env.range];
     this.dist += (this.targetDist - this.dist) * Math.min(1, dt * 2.2);
-    this._enemy.position.set(0, -0.4, -this.dist);
+    this._enemy.position.set(0, ENEMY_BASE_Y, -this.dist);
 
-    // leg gait — fast while moving range, idle sway otherwise
-    const gait = state.moving > 0 ? 9 : 1.4;
-    const amp = state.moving > 0 ? 0.5 : 0.08;
+    // walking gait — the enemy AFW is always striding forward, faster when
+    // the engagement range is closing/opening
+    const gait = marching ? 9 : 4.2;
+    const amp = marching ? 0.55 : 0.32;
     this._enemy.userData.legs.forEach((leg) => {
       const a = Math.sin(this.t * gait + leg.userData.phase) * amp;
       leg.rotation.x = a;
       leg.userData.knee.rotation.x = Math.max(0, -a) * 1.3;
     });
-    this._enemy.position.y += Math.sin(this.t * gait * 2) * amp * 0.2;
+    this._enemy.position.y += Math.sin(this.t * gait * 2) * amp * 0.4;
 
     // gunner aim micro-sway (shrinks as accuracy climbs)
     const sway = state.phase === 'battle' ? rangeSway(state) * 0.010 : 0.004;
@@ -405,7 +427,7 @@ export class World {
         this._muzzleFlash(this._foeMuzzleWorld(), 0xffae5a);
         this._tracer(this._foeMuzzleWorld(), this.camera.position.clone().add(new THREE.Vector3(0, -1, 2)), 0xff8855);
       } else if (e.type === 'impact' && e.side === 'foe') {
-        this._explosion(this._enemy.position.clone().setY(5), e.dmg);
+        this._explosion(this._enemy.position.clone().add(new THREE.Vector3(0, 4.2 * ENEMY_SCALE, 0)), e.dmg);
         // our hit lands downrange — modest feedback through the hull
         this.kickVel.z += 2;
         this.kickRotVel.x += 0.3;
@@ -422,7 +444,7 @@ export class World {
         this.rumble = Math.max(this.rumble, 0.85);      // shell blast shudder
         this._redFlash();
       } else if (e.type === 'miss' && e.side === 'foe') {
-        this._tracer(this._myMuzzleWorld(), this._enemy.position.clone().add(new THREE.Vector3(8, 6, 4)), 0xffcc66);
+        this._tracer(this._myMuzzleWorld(), this._enemy.position.clone().add(new THREE.Vector3(14, 4.2 * ENEMY_SCALE + 6, 4)), 0xffcc66);
       } else if (e.type === 'miss' && e.side === 'me') {
         this._dirt(this.camera.position.clone().add(new THREE.Vector3(6, -2, -8)));
       } else if (e.type === 'evade') {
@@ -435,7 +457,7 @@ export class World {
         this._infFlicker(e.side);
       }
       if (e.type === 'fire' && e.side === 'me') {
-        this._tracer(this._myMuzzleWorld(), this._enemy.position.clone().setY(5.5), e.hit ? 0xfff0b0 : 0xffcc66, e.hit);
+        this._tracer(this._myMuzzleWorld(), this._enemy.position.clone().add(new THREE.Vector3(0, 4.2 * ENEMY_SCALE, 0)), e.hit ? 0xfff0b0 : 0xffcc66, e.hit);
       }
     }
     state.fx.length = 0;
@@ -444,6 +466,7 @@ export class World {
   _myMuzzleWorld() { return this.myMuzzleLocal.clone().applyMatrix4(this.rig.matrixWorld); }
   _foeMuzzleWorld() {
     return this._enemy.userData.muzzleLocal.clone()
+      .multiplyScalar(ENEMY_SCALE)
       .applyEuler(this._enemy.rotation).add(this._enemy.position);
   }
 
