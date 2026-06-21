@@ -9,12 +9,17 @@ const RANGE_DIST = { SHORT: 24, MEDIUM: 42, LONG: 66 };
 
 // cold day vs night palettes
 const DAY = {
-  fog: 0x8a958f, sky: 0x9aa39a, ground: 0x5f6657,
-  hemiSky: 0xb9c2b4, hemiGround: 0x33372f, key: 0xf2efe0, keyI: 1.05, ambI: 0.55,
+  fog: 0xbcbaa6, sky: 0xc9c4ac, ground: 0x646a58,
+  hemiSky: 0xc2ccbe, hemiGround: 0x363b30, key: 0xfff0d6, keyI: 1.28, ambI: 0.5,
+  skyTop: 0x6f8aa6, skyHorizon: 0xcbc6ae, sun: 0xffe6ad, sunCore: 0xfff4da,
+  sunScale: 180, sunOp: 0.95, cloud: 0xf3efe2, cloudOp: 0.55,
 };
 const NIGHT = {
-  fog: 0x12161c, sky: 0x0c0f14, ground: 0x232a26,
-  hemiSky: 0x2a3340, hemiGround: 0x10130f, key: 0x9fb7d6, keyI: 0.45, ambI: 0.25,
+  // moonlit, cool-blue night — clearly readable, not pitch black
+  fog: 0x2c3744, sky: 0x1b2330, ground: 0x3c473f,
+  hemiSky: 0x6f8198, hemiGround: 0x2a302c, key: 0xc2d4ee, keyI: 0.8, ambI: 0.55,
+  skyTop: 0x0d1320, skyHorizon: 0x2b3643, sun: 0xb6c6dc, sunCore: 0xe6eefa,
+  sunScale: 100, sunOp: 0.62, cloud: 0x3a4757, cloudOp: 0.35,
 };
 
 export class World {
@@ -45,6 +50,7 @@ export class World {
     this.lastNight = null;
 
     this._buildLights();
+    this._buildSky();
     this._buildGround();
     this._enemy = this._buildAFW({ enemy: true });
     this.scene.add(this._enemy);
@@ -67,6 +73,64 @@ export class World {
     Object.assign(this.key.shadow.camera, { left: -d, right: d, top: d, bottom: -d });
     this.scene.add(this.key);
     this.scene.add(this.key.target);
+  }
+
+  _radialTexture() {
+    const c = document.createElement('canvas'); c.width = c.height = 128;
+    const g = c.getContext('2d');
+    const grd = g.createRadialGradient(64, 64, 0, 64, 64, 64);
+    grd.addColorStop(0, 'rgba(255,255,255,1)');
+    grd.addColorStop(0.28, 'rgba(255,255,255,0.65)');
+    grd.addColorStop(1, 'rgba(255,255,255,0)');
+    g.fillStyle = grd; g.fillRect(0, 0, 128, 128);
+    return new THREE.CanvasTexture(c);
+  }
+
+  _buildSky() {
+    // gradient dome (top → hazy horizon), recoloured per time of day
+    this.skyU = {
+      top: { value: new THREE.Color(DAY.skyTop) },
+      horizon: { value: new THREE.Color(DAY.skyHorizon) },
+      offset: { value: 0.06 }, exponent: { value: 0.85 },
+    };
+    const dome = new THREE.Mesh(
+      new THREE.SphereGeometry(450, 24, 16),
+      new THREE.ShaderMaterial({
+        side: THREE.BackSide, depthWrite: false, fog: false, uniforms: this.skyU,
+        vertexShader: 'varying vec3 vD; void main(){ vD=normalize(position); gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }',
+        fragmentShader: 'uniform vec3 top; uniform vec3 horizon; uniform float offset; uniform float exponent; varying vec3 vD; void main(){ float h=clamp(vD.y+offset,0.0,1.0); gl_FragColor=vec4(mix(horizon,top,pow(h,exponent)),1.0); }',
+      }));
+    dome.renderOrder = -2;
+    this.scene.add(dome);
+
+    // sun / moon glow toward the key light
+    const tex = this._radialTexture();
+    const dir = new THREE.Vector3(-30, 46, -10).normalize().multiplyScalar(360);
+    const sprite = (size, color, op) => {
+      const s = new THREE.Sprite(new THREE.SpriteMaterial({
+        map: tex, color, transparent: true, opacity: op,
+        depthWrite: false, blending: THREE.AdditiveBlending,
+      }));
+      s.position.copy(dir); s.scale.setScalar(size); s.renderOrder = -1;
+      this.scene.add(s); return s;
+    };
+    this.sunGlow = sprite(DAY.sunScale, DAY.sun, DAY.sunOp);
+    this.sunCore = sprite(DAY.sunScale * 0.3, DAY.sunCore, 1);
+
+    // soft drifting clouds near the horizon (normal-blended haze puffs)
+    this.clouds = [];
+    for (let i = 0; i < 6; i++) {
+      const m = new THREE.Sprite(new THREE.SpriteMaterial({
+        map: tex, color: DAY.cloud, transparent: true, opacity: DAY.cloudOp,
+        depthWrite: false,
+      }));
+      const ang = (i / 6) * Math.PI * 2 + Math.random();
+      const r = 300 + Math.random() * 60;
+      m.position.set(Math.cos(ang) * r, 40 + Math.random() * 70, -Math.abs(Math.sin(ang)) * r - 40);
+      m.scale.set(140 + Math.random() * 120, 46 + Math.random() * 26, 1);
+      m.renderOrder = -1; m.userData.spd = 1.5 + Math.random() * 2;
+      this.clouds.push(m); this.scene.add(m);
+    }
   }
 
   _buildGround() {
@@ -202,18 +266,31 @@ export class World {
     this.lastNight = night;
     const p = night ? NIGHT : DAY;
     this.scene.fog.color.setHex(p.fog);
-    this.scene.fog.near = night ? 22 : 30;
-    this.scene.fog.far = night ? 130 : 180;
+    this.scene.fog.near = night ? 30 : 30;
+    this.scene.fog.far = night ? 175 : 180;
     this.scene.background.setHex(p.sky);
     this.groundMat.color.setHex(p.ground);
     this.hemi.color.setHex(p.hemiSky); this.hemi.groundColor.setHex(p.hemiGround);
     this.hemi.intensity = p.ambI;
     this.key.color.setHex(p.key); this.key.intensity = p.keyI;
+    // sky dome + sun/moon + clouds
+    this.skyU.top.value.setHex(p.skyTop);
+    this.skyU.horizon.value.setHex(p.skyHorizon);
+    this.sunGlow.material.color.setHex(p.sun); this.sunGlow.material.opacity = p.sunOp;
+    this.sunGlow.scale.setScalar(p.sunScale);
+    this.sunCore.material.color.setHex(p.sunCore); this.sunCore.scale.setScalar(p.sunScale * 0.3);
+    this.clouds.forEach((c) => { c.material.color.setHex(p.cloud); c.material.opacity = p.cloudOp; });
   }
 
   update(state, dt) {
     this.t += dt;
     this.setEnv(state.env.night);
+
+    // slow cloud drift
+    for (const c of this.clouds) {
+      c.position.x += c.userData.spd * dt;
+      if (c.position.x > 340) c.position.x = -340;
+    }
 
     // distance follows the current range
     this.targetDist = RANGE_DIST[state.env.range];

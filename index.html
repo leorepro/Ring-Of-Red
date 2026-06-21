@@ -102,6 +102,73 @@
     </div>
   </div>
 
+  <!-- ===================== ANIME PILOT CUT-IN ===================== -->
+  <div id="cutin" aria-hidden="true">
+    <div class="cutin-portrait">
+      <div class="cutin-speed"></div>
+      <svg class="cutin-face" viewBox="0 0 160 174" xmlns="http://www.w3.org/2000/svg">
+        <!-- uniform / shoulders -->
+        <path d="M12 174 L16 150 C46 131 114 131 144 150 L148 174 Z" fill="#566038"/>
+        <path d="M62 134 L80 152 L98 134 L94 130 L66 130 Z" fill="#3b4329"/>
+        <path d="M64 135 L80 150 L96 135" fill="none" stroke="#e6b53a" stroke-width="2"/>
+        <circle cx="70" cy="146" r="2" fill="#e6b53a"/><circle cx="90" cy="146" r="2" fill="#e6b53a"/>
+        <!-- neck -->
+        <path d="M71 118 H89 V134 L80 140 L71 134 Z" fill="#cf945f"/>
+        <!-- ears -->
+        <ellipse cx="51" cy="86" rx="7" ry="10" fill="#e0a980"/>
+        <ellipse cx="109" cy="86" rx="7" ry="10" fill="#d2935f"/>
+        <!-- face -->
+        <path d="M50 60 C50 38 110 38 110 60 C110 92 95 116 80 122 C65 116 50 92 50 60 Z" fill="#eebb93"/>
+        <!-- cel shadow (right) -->
+        <path d="M89 44 C104 52 109 74 103 97 C99 108 92 116 84 120 C93 102 93 72 89 44 Z" fill="#d2935f" opacity=".5"/>
+        <!-- rim light (left) -->
+        <path d="M53 58 C53 41 64 35 72 34 C61 41 57 60 59 86 C61 102 67 112 73 118 C61 112 53 92 53 58 Z" fill="#ffe2ab" opacity=".55"/>
+        <!-- eyebrows -->
+        <path class="brow" d="M57 64 Q67 59 77 63" stroke="#241f1b" stroke-width="2.6" fill="none" stroke-linecap="round"/>
+        <path class="brow" d="M85 63 Q95 59 105 64" stroke="#241f1b" stroke-width="2.6" fill="none" stroke-linecap="round"/>
+        <!-- eyes -->
+        <g class="eye">
+          <ellipse cx="67" cy="77" rx="9" ry="6.6" fill="#f5f2e8"/>
+          <circle cx="68" cy="78" r="5.3" fill="#5f7f99"/>
+          <circle cx="68" cy="78" r="2.6" fill="#1f242b"/>
+          <circle cx="65.6" cy="75.4" r="1.7" fill="#fff"/>
+          <path d="M57 74 Q67 68 77 74" stroke="#241f1b" stroke-width="3" fill="none" stroke-linecap="round"/>
+        </g>
+        <g class="eye">
+          <ellipse cx="95" cy="77" rx="8.6" ry="6.2" fill="#f5f2e8"/>
+          <circle cx="95" cy="78" r="5" fill="#5f7f99"/>
+          <circle cx="95" cy="78" r="2.5" fill="#1f242b"/>
+          <circle cx="92.8" cy="75.6" r="1.6" fill="#fff"/>
+          <path d="M86 74 Q95 68 104 74" stroke="#241f1b" stroke-width="3" fill="none" stroke-linecap="round"/>
+        </g>
+        <!-- nose -->
+        <path d="M81 86 q-3 6 -5 8" stroke="#cf945f" stroke-width="2" fill="none" stroke-linecap="round"/>
+        <!-- mouth: calm vs shout (toggled by .shout on #cutin) -->
+        <path class="m-calm" d="M72 104 Q80 108 88 104" stroke="#9c5a44" stroke-width="2.6" fill="none" stroke-linecap="round"/>
+        <path class="m-shout" d="M72 101 Q80 100 88 101 Q84 115 80 116 Q76 115 72 101 Z" fill="#6e2b22"/>
+        <!-- hair -->
+        <path d="M44 64 C38 24 122 24 116 64 L107 50 L101 64 L93 47 L85 62 L78 45 L70 62 L62 48 L55 64 L47 50 Z" fill="#2b2823"/>
+        <path d="M52 40 C70 31 96 32 108 42 C96 37 70 36 52 40 Z" fill="#47423b" opacity=".75"/>
+        <!-- headset -->
+        <path d="M48 70 Q80 38 112 70" stroke="#20242a" stroke-width="6" fill="none"/>
+        <ellipse cx="47" cy="84" rx="11" ry="14" fill="#20242a"/>
+        <ellipse cx="47" cy="84" rx="11" ry="14" fill="none" stroke="#e6b53a" stroke-width="2"/>
+        <ellipse cx="48" cy="84" rx="5" ry="7" fill="#363b42"/>
+        <ellipse cx="113" cy="84" rx="11" ry="14" fill="#20242a"/>
+        <ellipse cx="113" cy="84" rx="11" ry="14" fill="none" stroke="#b88716" stroke-width="2"/>
+        <ellipse cx="112" cy="84" rx="5" ry="7" fill="#2c3037"/>
+        <path d="M47 92 Q42 114 70 109" stroke="#20242a" stroke-width="3.6" fill="none"/>
+        <circle cx="70" cy="109" r="3.2" fill="#363b42"/>
+        <!-- sweat (tense) -->
+        <path class="sweat" d="M115 54 q5 9 0 14 q-5 -5 0 -14 Z" fill="#bfe0ff"/>
+      </svg>
+    </div>
+    <div class="cutin-bubble">
+      <div id="cutin-name" class="cutin-name">九鬼 隊長</div>
+      <div id="cutin-text" class="cutin-text"></div>
+    </div>
+  </div>
+
   <!-- ===================== TITLE ===================== -->
   <div id="title" class="overlay">
     <div class="reticle-mark"></div>
