@@ -232,6 +232,13 @@ export class World {
     const legL = buildLeg(-1), legR = buildLeg(1); g.add(legL, legR);
 
     g.userData.parts = { head, torso, armL, armR, legL, legR };
+    // stable rest-position anchors (local to the mech) used for HUD projection,
+    // so a blown-off / tumbling part's debris never drags the targeting markers
+    g.userData.partAnchors = {
+      head: head.position.clone(), torso: torso.position.clone(),
+      armL: armL.position.clone(), armR: armR.position.clone(),
+      legL: legL.position.clone(), legR: legR.position.clone(),
+    };
     g.userData.legs = [{ grp: legL, phase: 0 }, { grp: legR, phase: Math.PI }];
     g.rotation.y = enemy ? Math.PI : 0;    // enemy faces the camera
     return g;
@@ -459,13 +466,17 @@ export class World {
   _project(state) {
     const W = window.innerWidth, H = window.innerHeight;
     const v = new THREE.Vector3();
-    const P = this._enemy.userData.parts;
-    const pr = (node) => {
-      node.getWorldPosition(v); v.project(this.camera);
+    // project the parts' stable rest anchors (through the mech's world matrix)
+    // rather than the live nodes, so detached/falling debris can't skew markers
+    this._enemy.updateWorldMatrix(true, false);
+    const m = this._enemy.matrixWorld;
+    const A = this._enemy.userData.partAnchors;
+    const pr = (anchor) => {
+      v.copy(anchor).applyMatrix4(m).project(this.camera);
       return { x: (v.x * 0.5 + 0.5) * W, y: (-v.y * 0.5 + 0.5) * H };
     };
     const s = {};
-    for (const k in P) s[k] = pr(P[k]);
+    for (const k in A) s[k] = pr(A[k]);
     const dy = (PART_POS.head.y - PART_POS.torso.y) || 1;
     const dx = (PART_POS.armR.x - PART_POS.armL.x) || 1;
     state.screen = {
