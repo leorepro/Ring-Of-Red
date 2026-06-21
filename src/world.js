@@ -38,6 +38,7 @@ export class World {
     this.kickRot = new THREE.Vector3();      // x = pitch, y = yaw, z = roll
     this.kickRotVel = new THREE.Vector3();
     this.trauma = 0;                          // brief metallic rattle on top
+    this.rumble = 0;                           // sustained post-fire hull shudder
     this.barrelKick = 0;                      // foreground barrel recoiling back
     this.effects = [];
     this.t = 0;
@@ -258,20 +259,34 @@ export class World {
     const rp = tr * 0.22, rr = tr * 0.018;
     const rnd = () => Math.random() - 0.5;
 
+    // Post-fire shudder: the muzzle blast's shockwave keeps the heavy hull
+    // vibrating for ~1.8s, fading steadily (linear) so the after-shake stays
+    // clearly felt well after the initial recoil has settled.
+    this.rumble = Math.max(0, this.rumble - dt * 0.55);
+    const rb = this.rumble;                              // linear fade = sustained
+    const T = this.t;
+    const rumX = (Math.sin(T * 45) + 0.5 * Math.sin(T * 74)) * 0.30 * rb;
+    const rumY = (Math.sin(T * 53 + 1) + 0.5 * Math.sin(T * 83)) * 0.34 * rb;
+    const rumRoll  = Math.sin(T * 61 + 2) * 0.017 * rb;
+    const rumPitch = Math.sin(T * 69) * 0.014 * rb;
+
     this.camera.position.set(
-      this.kickPos.x + swayX + rnd() * rp,
-      7.6 + this.kickPos.y + bobY + rnd() * rp,
+      this.kickPos.x + swayX + rumX + rnd() * rp,
+      7.6 + this.kickPos.y + bobY + rumY + rnd() * rp,
       6 + this.kickPos.z + lurchZ + rnd() * rp * 0.5,
     );
     this.camera.rotation.set(
-      -0.04 + sy + pitchG + this.kickRot.x + rnd() * rr,
+      -0.04 + sy + pitchG + this.kickRot.x + rumPitch + rnd() * rr,
       sx + this.kickRot.y + rnd() * rr,
-      rollZ + this.kickRot.z + rnd() * rr * 0.7,
+      rollZ + this.kickRot.z + rumRoll + rnd() * rr * 0.7,
     );
     this.rig.position.copy(this.camera.position);
     this.rig.rotation.copy(this.camera.rotation);
-    // foreground barrel slams backward then settles
-    if (this.myBarrel) this.myBarrel.position.z = this.barrelBaseZ + this.barrelKick * 2.2;
+    // foreground barrel slams backward then settles, shuddering as it does
+    if (this.myBarrel) {
+      this.myBarrel.position.z = this.barrelBaseZ + this.barrelKick * 2.2
+        + Math.sin(T * 70) * 0.09 * rb;
+    }
 
     this._consumeFx(state);
     this._updateEffects(dt);
@@ -306,6 +321,7 @@ export class World {
         this.kickVel.y += 2.6;
         this.kickVel.z += 7.5;                          // recoils backward
         this.trauma = Math.max(this.trauma, 0.7);
+        this.rumble = 1;                                // sustained after-shudder
         this.barrelKick = 1;
       } else if (e.type === 'fire' && e.side === 'foe') {
         this._muzzleFlash(this._foeMuzzleWorld(), 0xffae5a);
@@ -325,6 +341,7 @@ export class World {
         this.kickRotVel.z += d * 1.7;                   // hull rolls from the blow
         this.kickRotVel.x += 0.9;
         this.trauma = 1;
+        this.rumble = Math.max(this.rumble, 0.85);      // shell blast shudder
         this._redFlash();
       } else if (e.type === 'miss' && e.side === 'foe') {
         this._tracer(this._myMuzzleWorld(), this._enemy.position.clone().add(new THREE.Vector3(8, 6, 4)), 0xffcc66);
