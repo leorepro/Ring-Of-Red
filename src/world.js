@@ -8,8 +8,8 @@ import { rangeSway, PART_POS } from './combat.js';
 // engagement distances pulled far out — at this range a tiny aim wobble
 // walks the point of impact from the head down to the legs (sniper feel)
 const RANGE_DIST = { SHORT: 200, MEDIUM: 360, LONG: 520 };
-const ENEMY_SCALE = 4.8;               // ~1/8 of screen height at MEDIUM range
-const ENEMY_BASE_Y = 0.75 * ENEMY_SCALE - 0.6;   // keep the feet on the ground
+const ENEMY_SCALE = 4.4;               // ~1/8 of screen height at MEDIUM range
+const ENEMY_BASE_Y = 1.4 * ENEMY_SCALE - 0.6;    // keep the feet (~-1.4 local) on the ground
 // our gunner rides atop our own AFW, so the sight is level with the enemy's
 // mid-body — looking straight across, not craning up at it
 const CAM_Y = ENEMY_BASE_Y + 6.5 * ENEMY_SCALE;
@@ -143,53 +143,88 @@ export class World {
     this._zNear = 30; this._zFar = -950;
   }
 
-  // a bipedal AFW: head, torso, two arm-cannons (the "hands" that fire),
-  // and two walking legs. Parts are kept in userData for locational damage.
+  // a detailed bipedal AFW: head, torso, two arm-cannons (the "hands" that
+  // fire), two walking legs. Part groups/pivots are preserved for locational
+  // damage, projection and animation.
   _buildAFW({ enemy }) {
     const g = new THREE.Group();
-    const body = enemy ? 0x6b5a3a : 0x55603f;
+    const body  = enemy ? 0x6f5d42 : 0x55603f;   // armour
+    const body2 = enemy ? 0x5a4b36 : 0x47512f;   // darker panels
+    const steel = 0x33373a;
+    const dark  = 0x202327;
     const accent = enemy ? 0xc0443a : 0x8a9a5b;
-    const steel = 0x3a3f3a;
-    const mat = (c) => new THREE.MeshStandardMaterial({ color: c, flatShading: true, roughness: 0.85, metalness: 0.28 });
+    const trim  = enemy ? 0xd9a23a : 0xb8c06a;
+    const mat = (c, m = 0.4, r = 0.7) => new THREE.MeshStandardMaterial({ color: c, flatShading: true, roughness: r, metalness: m });
+    const visMat = new THREE.MeshStandardMaterial({ color: 0x123, emissive: enemy ? 0xff5a3a : 0x6fd0ff, emissiveIntensity: 0.9, flatShading: true });
+    const box = (w, h, d, c, m, r) => new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat(c, m, r));
+    const cyl = (rt, rb, h, c, seg = 10) => new THREE.Mesh(new THREE.CylinderGeometry(rt, rb, h, seg), mat(c, 0.5, 0.6));
+    const add = (parent, mesh, x, y, z, cast = true) => { mesh.position.set(x, y, z); mesh.castShadow = cast; parent.add(mesh); return mesh; };
 
-    // pelvis
-    const pelvis = new THREE.Mesh(new THREE.BoxGeometry(3.6, 2.0, 2.8), mat(steel));
-    pelvis.position.y = 6.0; pelvis.castShadow = true; g.add(pelvis);
+    // ---- pelvis / hip ----
+    add(g, box(4.0, 2.2, 3.0, body2), 0, 6.0, 0);
+    add(g, box(4.6, 0.6, 3.2, steel), 0, 7.0, 0);            // belt
+    add(g, box(2.2, 1.4, 1.0, dark), 0, 5.4, 1.5);           // crotch guard
 
-    // torso
-    const torso = new THREE.Group(); torso.position.y = 9.2;
-    const chest = new THREE.Mesh(new THREE.BoxGeometry(4.8, 4.8, 3.2), mat(body)); chest.castShadow = true;
-    const plate = new THREE.Mesh(new THREE.BoxGeometry(2.2, 1.5, 0.2), mat(accent)); plate.position.set(0, 0.4, 1.7);
-    torso.add(chest, plate); g.add(torso);
+    // ---- torso ----
+    const torso = new THREE.Group(); torso.position.y = 9.4;
+    add(torso, box(5.0, 4.6, 3.2, body), 0, 0, 0);           // chest core
+    add(torso, box(5.6, 1.4, 3.4, body2), 0, 1.9, 0);        // upper deck
+    const gla = add(torso, box(4.4, 2.0, 1.0, steel), 0, -0.4, 1.5); gla.rotation.x = -0.4;  // sloped glacis
+    add(torso, box(1.4, 1.0, 0.3, visMat), 0, 0.2, 2.0, false);   // chest sensor (glow)
+    add(torso, box(2.0, 0.5, 0.25, trim), 0, -1.4, 1.95);    // accent stripe
+    add(torso, box(1.0, 1.6, 0.3, accent), -1.7, 0.4, 1.75); // unit marking
+    // back thruster pack
+    add(torso, box(3.6, 3.2, 1.4, body2), 0, 0.4, -2.0);
+    add(torso, cyl(0.6, 0.7, 1.4, dark), -1.0, -1.2, -2.6).rotation.x = Math.PI / 2;
+    add(torso, cyl(0.6, 0.7, 1.4, dark), 1.0, -1.2, -2.6).rotation.x = Math.PI / 2;
+    // shoulder yokes
+    add(torso, box(7.0, 1.4, 2.4, steel), 0, 1.6, 0);
+    g.add(torso);
 
-    // head
-    const head = new THREE.Group(); head.position.y = 12.4;
-    const skull = new THREE.Mesh(new THREE.BoxGeometry(1.9, 1.6, 1.9), mat(body)); skull.castShadow = true;
-    const visor = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.4, 0.2), mat(0x20242a)); visor.position.set(0, 0.1, 1.0);
-    head.add(skull, visor); g.add(head);
+    // ---- head ----
+    const head = new THREE.Group(); head.position.y = 12.6;
+    add(head, box(2.0, 1.7, 2.0, body), 0, 0, 0);
+    add(head, box(2.2, 0.5, 2.2, steel), 0, 0.9, 0);          // crest
+    add(head, box(1.7, 0.5, 0.25, visMat), 0, 0.05, 1.05, false);  // visor glow
+    add(head, cyl(0.06, 0.06, 1.6, trim), 0.8, 1.6, -0.3);   // antenna
+    add(head, box(0.4, 0.7, 0.6, dark), -1.15, 0.1, 0.2);    // ear sensor L
+    add(head, box(0.4, 0.7, 0.6, dark), 1.15, 0.1, 0.2);     // ear sensor R
+    g.add(head);
 
-    // arm cannons — the AFW fires from its hands
-    const buildArm = (side) => {           // side: -1 / +1
-      const arm = new THREE.Group(); arm.position.set(side * 3.2, 10.6, 0);
-      const shoulder = new THREE.Mesh(new THREE.BoxGeometry(1.8, 1.9, 1.9), mat(steel)); shoulder.castShadow = true;
-      const cannon = new THREE.Mesh(new THREE.CylinderGeometry(0.7, 0.9, 7.2, 10), mat(steel));
-      cannon.rotation.x = Math.PI / 2; cannon.position.set(0, -0.2, -3.6); cannon.castShadow = true;
-      const muzzle = new THREE.Mesh(new THREE.CylinderGeometry(1.0, 1.0, 0.8, 10), mat(0x222));
-      muzzle.rotation.x = Math.PI / 2; muzzle.position.set(0, -0.2, -7.2);
-      const tip = new THREE.Object3D(); tip.position.set(0, -0.2, -7.7); arm.userData.tip = tip;
-      arm.add(shoulder, cannon, muzzle, tip);
+    // ---- arm cannons (fire from the hands) ----
+    const buildArm = (side) => {
+      const arm = new THREE.Group(); arm.position.set(side * 3.4, 11.0, 0);
+      add(arm, box(2.4, 2.4, 2.6, body), 0, 0, 0);                 // pauldron
+      add(arm, box(2.7, 0.8, 2.9, steel), 0, 1.1, 0);              // pauldron cap
+      add(arm, box(0.6, 1.2, 0.6, accent), side * 1.25, 0.2, 0.2); // shoulder accent
+      add(arm, box(1.6, 1.6, 2.2, body2), 0, -1.6, 0);            // upper arm
+      // cannon assembly pointing forward (-z)
+      add(arm, box(1.8, 1.8, 3.4, steel), 0, -1.9, -2.2);         // breech housing
+      add(arm, cyl(0.7, 0.7, 1.6, dark), 0, -1.9, -1.0);          // drum
+      const barrel = add(arm, cyl(0.55, 0.7, 6.4, steel), 0, -1.9, -5.6); barrel.rotation.x = Math.PI / 2;
+      add(arm, cyl(0.5, 0.5, 4.0, dark), 0, -1.9, -5.6).rotation.x = Math.PI / 2;  // bore
+      const brake = add(arm, cyl(1.0, 1.0, 1.0, dark), 0, -1.9, -8.6); brake.rotation.x = Math.PI / 2; // muzzle brake
+      add(arm, box(2.0, 0.3, 0.5, trim), 0, -2.85, -8.6, false);  // brake vents
+      const tip = new THREE.Object3D(); tip.position.set(0, -1.9, -9.2); arm.add(tip); arm.userData.tip = tip;
       return arm;
     };
     const armL = buildArm(-1), armR = buildArm(1); g.add(armL, armR);
 
-    // walking legs (two)
+    // ---- walking legs ----
     const buildLeg = (side) => {
-      const leg = new THREE.Group(); leg.position.set(side * 1.5, 6.0, 0);
-      const thigh = new THREE.Mesh(new THREE.BoxGeometry(1.6, 3.4, 1.6), mat(body)); thigh.position.y = -1.6; thigh.castShadow = true;
-      const knee = new THREE.Group(); knee.position.y = -3.2;
-      const shin = new THREE.Mesh(new THREE.BoxGeometry(1.3, 3.4, 1.3), mat(steel)); shin.position.y = -1.6; shin.castShadow = true;
-      const foot = new THREE.Mesh(new THREE.BoxGeometry(1.9, 0.7, 3.0), mat(steel)); foot.position.set(0, -3.2, 0.4);
-      knee.add(shin, foot); leg.add(thigh, knee); leg.userData.knee = knee;
+      const leg = new THREE.Group(); leg.position.set(side * 1.6, 6.0, 0);
+      add(leg, box(2.2, 2.0, 2.4, body), 0, -0.4, 0);            // hip housing
+      add(leg, box(1.9, 3.2, 1.9, body2), 0, -2.0, 0);          // thigh
+      add(leg, box(2.1, 0.8, 2.1, steel), 0, -0.7, 0);          // thigh collar
+      const knee = new THREE.Group(); knee.position.y = -3.4;
+      add(knee, box(1.5, 1.4, 1.6, steel), 0, 0, 0);            // knee joint
+      add(knee, box(1.0, 1.2, 0.4, accent), 0, 0, 1.0);         // knee guard
+      add(knee, box(1.7, 3.2, 1.7, body), 0, -1.8, 0);          // shin
+      add(knee, cyl(0.18, 0.18, 3.0, dark), side * 0.9, -1.6, 0.6); // hydraulic piston
+      add(knee, box(2.4, 0.8, 4.0, steel), 0, -3.6, 0.5);       // foot
+      add(knee, box(0.7, 0.6, 1.0, dark), -0.7, -3.7, 2.3);     // toe L
+      add(knee, box(0.7, 0.6, 1.0, dark), 0.7, -3.7, 2.3);      // toe R
+      leg.add(knee); leg.userData.knee = knee;
       return leg;
     };
     const legL = buildLeg(-1), legR = buildLeg(1); g.add(legL, legR);
