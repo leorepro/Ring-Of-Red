@@ -27,6 +27,30 @@ bindControls({
   halt: () => { if (running) { audio.ui(); tryHalt(state); } },
 });
 
+// ---- anime pilot cut-in (slides in on dramatic beats, with a cooldown) ----
+const cutin = {
+  el: document.getElementById('cutin'),
+  nameEl: document.getElementById('cutin-name'),
+  textEl: document.getElementById('cutin-text'),
+  timer: 0, cool: 0,
+  show(name, text, shout = false) {
+    if (this.cool > 0) return;
+    this.nameEl.textContent = name; this.textEl.textContent = text;
+    this.el.classList.toggle('shout', shout);
+    this.el.classList.add('shown'); this.el.classList.remove('out');
+    this.el.classList.remove('in'); void this.el.offsetWidth; this.el.classList.add('in');
+    this.timer = 2.3; this.cool = 3.6;
+  },
+  hide() {
+    this.el.classList.remove('in'); this.el.classList.add('out');
+    setTimeout(() => { this.el.classList.remove('shown', 'out'); }, 320);
+  },
+  tick(dt) {
+    if (this.cool > 0) this.cool -= dt;
+    if (this.timer > 0) { this.timer -= dt; if (this.timer <= 0) this.hide(); }
+  },
+};
+
 // unlock audio on the first user gesture (mobile autoplay policy)
 const unlock = () => audio.resume();
 window.addEventListener('pointerdown', unlock);
@@ -43,6 +67,8 @@ function startBattle() {
   resultEl.classList.add('hidden');
   document.getElementById('cine').classList.remove('show');
   document.body.classList.remove('ending');
+  cutin.el.classList.remove('shown', 'in', 'out');
+  cutin.timer = 0; cutin.cool = 0; prevMax = false; prevDodge = false;
   hud.show();
   running = true;
 }
@@ -105,8 +131,26 @@ const ENDING_DURATION = 10.0;  // bullet-time length for the killing blow (~10s)
 const SLOW = 0.14;             // world time scale during the slow-mo finish
 const cine = document.getElementById('cine');
 
+const PILOT = '九鬼 隊長';
+// fire dramatic pilot cut-ins from this frame's combat events
+function pilotCutins() {
+  if (!running) return;
+  if (state.fx) {
+    for (const e of state.fx) {
+      if (e.type === 'shot' && e.side === 'me' && e.kill) cutin.show(PILOT, '結束了——！', true);
+      else if (e.type === 'shot' && e.side === 'foe' && e.kill) cutin.show(PILOT, '到此為止…了嗎。', false);
+      else if (e.type === 'shot' && e.side === 'me' && e.crit) cutin.show(PILOT, '正中要害！', true);
+      else if (e.type === 'shot' && e.side === 'foe' && e.crit) cutin.show(PILOT, '可惡…裝甲被打穿！', true);
+    }
+  }
+  if (state.me.maxArmed && !prevMax) cutin.show(PILOT, '必殺・全力一擊！', true);
+  prevMax = state.me.maxArmed;
+  if (state.dodge > 0 && !prevDodge) cutin.show(PILOT, '來了——迴避！', true);
+  prevDodge = state.dodge > 0;
+}
+
 let last = performance.now();
-let prevOverheat = false;
+let prevOverheat = false, prevMax = false, prevDodge = false;
 function frame(now) {
   let dt = (now - last) / 1000;
   last = now;
@@ -131,6 +175,8 @@ function frame(now) {
       if (now - state.endStart >= ENDING_DURATION * 1000) { state.phase = state.endResult; finish(); }
     }
   }
+  pilotCutins();          // read combat events before the world drains state.fx
+  cutin.tick(dt);
   const worldDt = (running && state.phase === 'ending') ? dt * SLOW : dt;
   world.update(state, worldDt);
   requestAnimationFrame(frame);
