@@ -108,35 +108,9 @@ export class World {
     dome.renderOrder = -2;
     this.scene.add(dome);
 
-    // sun / moon glow toward the key light
-    const tex = this._radialTexture();
-    this._glowTex = tex;
-    const dir = new THREE.Vector3(-30, 46, -10).normalize().multiplyScalar(1000);
-    const sprite = (size, color, op) => {
-      const s = new THREE.Sprite(new THREE.SpriteMaterial({
-        map: tex, color, transparent: true, opacity: op,
-        depthWrite: false, blending: THREE.AdditiveBlending,
-      }));
-      s.position.copy(dir); s.scale.setScalar(size); s.renderOrder = -1;
-      this.scene.add(s); return s;
-    };
-    this.sunGlow = sprite(DAY.sunScale, DAY.sun, DAY.sunOp);
-    this.sunCore = sprite(DAY.sunScale * 0.3, DAY.sunCore, 1);
-
-    // soft drifting clouds near the horizon (normal-blended haze puffs)
-    this.clouds = [];
-    for (let i = 0; i < 6; i++) {
-      const m = new THREE.Sprite(new THREE.SpriteMaterial({
-        map: tex, color: DAY.cloud, transparent: true, opacity: DAY.cloudOp,
-        depthWrite: false,
-      }));
-      const ang = (i / 6) * Math.PI * 2 + Math.random();
-      const r = 850 + Math.random() * 250;
-      m.position.set(Math.cos(ang) * r, 160 + Math.random() * 220, -Math.abs(Math.sin(ang)) * r - 120);
-      m.scale.set(420 + Math.random() * 360, 130 + Math.random() * 80, 1);
-      m.renderOrder = -1; m.userData.spd = 4 + Math.random() * 5;
-      this.clouds.push(m); this.scene.add(m);
-    }
+    // clean sky: no sun/clouds, only the gradient backdrop.
+    this._glowTex = this._radialTexture();   // still used by infantry muzzle flickers
+    this.sunGlow = null; this.sunCore = null; this.clouds = [];
   }
 
   _buildGround() {
@@ -250,13 +224,9 @@ export class World {
     this.hemi.color.setHex(p.hemiSky); this.hemi.groundColor.setHex(p.hemiGround);
     this.hemi.intensity = p.ambI;
     this.key.color.setHex(p.key); this.key.intensity = p.keyI;
-    // sky dome + sun/moon + clouds
+    // sky dome gradient only (no sun/clouds)
     this.skyU.top.value.setHex(p.skyTop);
     this.skyU.horizon.value.setHex(p.skyHorizon);
-    this.sunGlow.material.color.setHex(p.sun); this.sunGlow.material.opacity = p.sunOp;
-    this.sunGlow.scale.setScalar(p.sunScale);
-    this.sunCore.material.color.setHex(p.sunCore); this.sunCore.scale.setScalar(p.sunScale * 0.3);
-    this.clouds.forEach((c) => { c.material.color.setHex(p.cloud); c.material.opacity = p.cloudOp; });
   }
 
   update(state, dt) {
