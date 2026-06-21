@@ -37,6 +37,25 @@ const RANGE_CFG = {
   LONG:   { ceil: 82, ramp: 27, dmg: 20, sway: 1.7 },
 };
 
+// switchable weapons; main cannon is unlimited, specials carry limited ammo.
+// kind: how the shot resolves; mods tweak aim/heat/reload; dmg is a multiplier
+// on the range base damage.
+export const WEAPONS = [
+  { id: 'cannon',  zh: '主砲', proj: 'shell',   ammo: Infinity, kind: 'single', dmg: 1.0, reload: 3.4, heat: 34, ramp: 1.0, ceil: 0,   zoom: 0 },
+  { id: 'sniper',  zh: '狙擊', proj: 'shell',   ammo: 6,        kind: 'sniper', dmg: 2.4, reload: 4.4, heat: 26, ramp: 1.7, ceil: 6,   zoom: 0.28 },
+  { id: 'mg',      zh: '機槍', proj: 'mg',      ammo: 4,        kind: 'burst',  dmg: 0.16, reload: 2.2, heat: 12, ramp: 1.0, ceil: -28, zoom: 0 },
+  { id: 'missile', zh: '飛彈', proj: 'missile', ammo: 4,        kind: 'splash', dmg: 1.3, reload: 4.6, heat: 22, ramp: 0.85, ceil: -4, zoom: 0 },
+  { id: 'shrap',   zh: '榴散', proj: 'shrap',   ammo: 5,        kind: 'multi',  dmg: 0.7, reload: 3.4, heat: 24, ramp: 1.1, ceil: -12, zoom: 0 },
+  { id: 'rail',    zh: '軌道', proj: 'rail',    ammo: 2,        kind: 'pierce', dmg: 3.6, reload: 6.0, heat: 42, ramp: 1.3, ceil: 10,  zoom: 0.34 },
+];
+const WEP = Object.fromEntries(WEAPONS.map((w) => [w.id, w]));
+export const weaponDef = (id) => WEP[id] || WEP.cannon;
+const ADJ = {
+  head: ['torso'], torso: ['armL', 'armR', 'head'], armL: ['torso'], armR: ['torso'],
+  legL: ['torso', 'legR'], legR: ['torso', 'legL'],
+};
+const initAmmo = () => ({ sniper: 6, mg: 4, missile: 4, shrap: 5, rail: 2 });
+
 const NIGHT_PENALTY = 10;
 const HEAT_AIM = 13, HEAT_FIRE = 34, HEAT_COOL = 22, HEAT_RECOVER = 32;
 const RELOAD_TIME = 3.4, ENEMY_RELOAD = 2.9, MOVE_TIME = 1.6;
@@ -76,6 +95,7 @@ export function createState() {
       squad: mkSquad(SQUADS.me), parts: mkParts(),
       shell: 'AT', max: 1, maxArmed: false,
       targetPart: 'torso',         // which enemy part we're aiming at
+      weapon: 'cannon', ammo: initAmmo(),
     },
     foe: {
       hp: 200, maxHp: 200,
@@ -120,10 +140,14 @@ function ceiling(env, unit) {
   if (unit && caps(unit).armsDown === 1) c -= 12;   // one good arm = shakier aim
   return Math.max(20, Math.min(99, c));
 }
+// player accuracy ceiling, including the current weapon's modifier
+function meCeil(state) {
+  return Math.max(20, Math.min(99, ceiling(state.env, state.me) + weaponDef(state.me.weapon).ceil));
+}
 
 export function rangeSway(state) {
   const base = RANGE_CFG[state.env.range].sway * (state.env.night ? 1.4 : 1);
-  const c = ceiling(state.env, state.me);
+  const c = meCeil(state);
   return base * (1 - 0.85 * (state.me.acc / c));
 }
 
@@ -162,55 +186,97 @@ export function cycleTarget(state) {
   state.me.targetPart = PARTS[(i + 1) % PARTS.length];
 }
 
+export function cycleWeapon(state) {
+  if (state.phase !== 'battle') return;
+  const me = state.me;
+  const avail = WEAPONS.filter((w) => w.ammo === Infinity || (me.ammo[w.id] || 0) > 0);
+  const i = avail.findIndex((w) => w.id === me.weapon);
+  me.weapon = avail[(i + 1) % avail.length].id;
+  me.acc = 0;                                   // re-acquire after switching
+  setBanner(state, `切換武器 — ${weaponDef(me.weapon).zh}`, 'me', 0.9);
+}
+function switchToCannon(state) {
+  state.me.weapon = 'cannon';
+  setBanner(state, '彈藥用罄 — 切回主砲', 'hit', 1.0);
+}
+
 export function tryFire(state) {
   const me = state.me;
   if (state.phase !== 'battle' || state.moving > 0) return;
   const cap = caps(me);
   if (!cap.canFire) { setBanner(state, '雙臂損壞 — 無法射擊', 'hit', 1.1); return; }
   if (me.reload > 0 || me.overheat || me.acc < 1) return;
+  const W = weaponDef(me.weapon);
+  if (W.ammo !== Infinity && (me.ammo[W.id] || 0) <= 0) { switchToCannon(state); return; }
 
   const pas = passives(me);
-  const c = ceiling(state.env, me);
-  const acc01 = me.acc / c;
+  const acc01 = me.acc / meCeil(state);
+  const baseR = RANGE_CFG[state.env.range].dmg;
   let maxShot = false;
   if (me.maxArmed) { maxShot = true; me.maxArmed = false; }
 
   state.flash.me = 0.12;
-  state.fx.push({ type: 'fire', side: 'me' });
-  setBanner(state, maxShot ? '必殺・直擊射撃！' : 'PLAYER AFW — FIRE', 'me', maxShot ? 1.1 : 0.7);
+  state.fx.push({ type: 'fire', side: 'me', weapon: W.id });
+  if (W.ammo !== Infinity) me.ammo[W.id] = Math.max(0, me.ammo[W.id] - 1);
 
   let shotFx = null;
-  if (me.shell === 'AP') {
-    // anti-personnel: shred enemy infantry/squads, light vs armour
+  if (W.id === 'cannon' && me.shell === 'AP') {
     const inf = Math.round(rand(5, 9) * (maxShot ? 1.8 : 1));
     state.foe.infantry = Math.max(0, state.foe.infantry - inf);
-    state.foe.hp = Math.max(0, state.foe.hp - Math.round(RANGE_CFG[state.env.range].dmg * 0.25));
+    state.foe.hp = Math.max(0, state.foe.hp - Math.round(baseR * 0.25));
     if (Math.random() < 0.6) knockSquad(state.foe);
-    shotFx = { type: 'shot', side: 'me', part: 'torso', hit: true, shrapnel: true };
+    shotFx = { type: 'shot', side: 'me', weapon: 'cannon', part: 'torso', hit: true, shrapnel: true };
     state.fx.push(shotFx);
     setBanner(state, `對人彈命中 — 敵步兵 −${inf}`, 'me', 1.0);
+  } else if (W.kind === 'burst') {
+    // machine gun: a spray of pellets scattered across the silhouette
+    let total = 0, last = null;
+    for (let i = 0; i < 9; i++) {
+      const part = hitPart({ x: state.aim.x + (Math.random() - 0.5) * 0.9, y: state.aim.y + (Math.random() - 0.5) * 0.9 });
+      if (part) { total += damagePart(state.foe, part, baseR * W.dmg * pas.afwDmg, acc01, false); last = part; }
+    }
+    state.foe.infantry = Math.max(0, state.foe.infantry - rand(3, 6));
+    shotFx = { type: 'shot', side: 'me', weapon: 'mg', part: last, hit: total > 0, burst: true };
+    state.fx.push(shotFx);
+    setBanner(state, total > 0 ? `機槍掃射 −${total}` : '機槍掃射 — 落空', 'me', 1.0);
+  } else if (W.kind === 'multi') {
+    // shrapnel: aim part + a couple of nearby parts at once
+    const set = new Set(); const a = hitPart(state.aim); if (a) set.add(a);
+    set.add(PARTS[Math.floor(Math.random() * PARTS.length)]);
+    set.add(PARTS[Math.floor(Math.random() * PARTS.length)]);
+    let total = 0;
+    for (const part of set) total += damagePart(state.foe, part, baseR * W.dmg * pas.afwDmg, acc01, false);
+    state.foe.infantry = Math.max(0, state.foe.infantry - rand(4, 8));
+    shotFx = { type: 'shot', side: 'me', weapon: 'shrap', part: a || 'torso', hit: set.size > 0, multi: true };
+    state.fx.push(shotFx);
+    setBanner(state, `榴散彈 −${total}（${set.size} 部位）`, 'me', 1.0);
   } else {
-    // anti-armour: locational hit decided by where the reticle is
+    // single-target: cannon / sniper / missile(splash) / rail(pierce)
     const part = maxShot ? me.targetPart : hitPart(state.aim);
     if (part) {
-      const crit = part === 'head' || maxShot || Math.random() < 0.1;
-      const base = RANGE_CFG[state.env.range].dmg * (0.85 + Math.random() * 0.3) * pas.afwDmg * (crit ? 1.6 : 1);
-      const dmg = damagePart(state.foe, part, base, acc01, maxShot);
-      shotFx = { type: 'shot', side: 'me', part, hit: true, crit };
+      const crit = W.kind === 'pierce' || part === 'head' || maxShot
+        || (W.id === 'sniper' && Math.random() < 0.6) || Math.random() < 0.1;
+      const base = baseR * (0.85 + Math.random() * 0.3) * pas.afwDmg * W.dmg * (crit ? 1.6 : 1);
+      let dmg = damagePart(state.foe, part, base, acc01, maxShot);
+      if (W.kind === 'splash') for (const ap of (ADJ[part] || [])) dmg += damagePart(state.foe, ap, base * 0.4, acc01, false);
+      if (W.kind === 'pierce' && part !== 'torso') dmg += damagePart(state.foe, 'torso', base * 0.5, acc01, false);
+      shotFx = { type: 'shot', side: 'me', weapon: W.id, part, hit: true, crit };
       state.fx.push(shotFx);
       if (Math.random() < 0.25) knockSquad(state.foe);
       const co = Math.round(state.foe.parts[part].co);
       setBanner(state, `${crit ? '爆擊！' : '命中'} ${PART_CFG[part].zh} −${dmg}（協調 ${co}%）`, 'me', 1.0);
     } else {
-      state.fx.push({ type: 'shot', side: 'me', part: null, hit: false });
-      setBanner(state, '失準 — 砲彈擦過', 'evade', 0.8);
+      state.fx.push({ type: 'shot', side: 'me', weapon: W.id, part: null, hit: false });
+      setBanner(state, '失準 — 擦過', 'evade', 0.8);
     }
   }
-  if (state.foe.hp <= 0) { if (shotFx) shotFx.kill = true; finisher(state, 'win'); }
+
+  if (state.foe.hp <= 0 && state.phase === 'battle') { if (shotFx) shotFx.kill = true; finisher(state, 'win'); }
 
   me.acc = 0;
-  me.reload = RELOAD_TIME * pas.reload * (cap.armsDown === 1 ? 1.4 : 1);
-  me.heat = Math.min(100, me.heat + HEAT_FIRE);
+  me.reload = W.reload * pas.reload * (cap.armsDown === 1 ? 1.4 : 1);
+  me.heat = Math.min(100, me.heat + W.heat);
+  if (W.ammo !== Infinity && me.ammo[W.id] <= 0 && state.phase === 'battle') switchToCannon(state);
 }
 
 export function tryDodge(state) {
@@ -310,10 +376,10 @@ export function update(state, dt) {
     me.acc = 0;
     if (me.heat <= HEAT_RECOVER) me.overheat = false;
   } else if (canAim) {
-    const c = ceiling(env, me);
+    const c = meCeil(state);
     const cfg = RANGE_CFG[env.range];
     const skill = 0.65 + 0.18 * me.pilot;
-    const rate = cfg.ramp * (0.4 + 0.6 * (1 - me.acc / c)) * skill * mp.aim;
+    const rate = cfg.ramp * (0.4 + 0.6 * (1 - me.acc / c)) * skill * mp.aim * weaponDef(me.weapon).ramp;
     me.acc = Math.min(c, me.acc + rate * dt);
     me.heat = Math.min(100, me.heat + HEAT_AIM * dt);
     if (me.heat >= 100) { me.overheat = true; me.acc = 0; }
@@ -340,7 +406,7 @@ export function update(state, dt) {
 // lingers on the body most.
 function updateAim(state, dt) {
   const me = state.me, env = state.env;
-  const c = ceiling(env, me);
+  const c = meCeil(state);
   const acc01 = Math.min(1, me.acc / c);
   const tgt = PART_POS[me.targetPart];
   const cx = tgt.x * 0.72 + PART_POS.torso.x * 0.28;     // torso bias

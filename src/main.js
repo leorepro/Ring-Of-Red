@@ -5,7 +5,7 @@
 import { World } from './world.js';
 import { Hud } from './hud.js';
 import { bindControls } from './input.js';
-import { createState, update, tryFire, tryDodge, tryMove, trySkill, tryShell, setTarget, cycleTarget, PARTS, PART_CFG } from './combat.js';
+import { createState, update, tryFire, tryDodge, tryMove, trySkill, tryShell, setTarget, cycleTarget, cycleWeapon, PARTS, PART_CFG } from './combat.js';
 
 const world = new World(document.getElementById('scene'));
 const hud = new Hud();
@@ -22,6 +22,7 @@ bindControls({
   skill: () => running && trySkill(state),
   shell: () => running && tryShell(state),
   target: () => running && cycleTarget(state),
+  weapon: () => running && cycleWeapon(state),
 });
 
 // ---- screen flow ----

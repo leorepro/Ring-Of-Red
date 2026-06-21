@@ -1,7 +1,7 @@
 // ============================================================
 //  hud.js — gunner dashboard + locational-targeting overlay
 // ============================================================
-import { PARTS, PART_POS, PART_CFG, caps } from './combat.js';
+import { PARTS, PART_POS, PART_CFG, caps, weaponDef } from './combat.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -21,6 +21,7 @@ export class Hud {
       fire: $('btn-fire'), dodge: $('btn-dodge'), move: $('btn-move'),
       skill: $('btn-skill'), skillUses: $('skill-uses'), moveLbl: $('move-lbl'),
       shell: $('btn-shell'), shellLbl: $('shell-lbl'),
+      weapon: $('btn-weapon'), weaponLbl: $('weapon-lbl'), weaponAmmo: $('weapon-ammo'),
     };
     this._built = false;
     this.onTarget = null;        // set by main.js: (part) => ...
@@ -154,9 +155,15 @@ export class Hud {
     this.el.skill.disabled = !(me.max > 0 && !me.maxArmed && state.phase === 'battle');
     this.el.skillUses.textContent = '×' + me.max;
     this.el.skill.classList.toggle('armed', me.maxArmed);
-    this.el.shell.disabled = state.phase !== 'battle';
+    this.el.shell.disabled = state.phase !== 'battle' || me.weapon !== 'cannon';
     this.el.shellLbl.textContent = me.shell === 'AT' ? '對甲' : '對人';
     this.el.shell.classList.toggle('ap', me.shell === 'AP');
+    // weapon selector: current weapon + remaining ammo
+    const W = weaponDef(me.weapon);
+    this.el.weaponLbl.textContent = W.zh;
+    this.el.weaponAmmo.textContent = W.ammo === Infinity ? '∞' : ('×' + (me.ammo[W.id] || 0));
+    this.el.weapon.disabled = state.phase !== 'battle';
+    this.el.weapon.classList.toggle('armed', me.weapon !== 'cannon');
     this.el.move.disabled = !(state.phase === 'battle' && state.moving <= 0 && me.reload <= 0 && c.canMove);
     this.el.moveLbl.textContent = state.nextRangeDir === 'in' ? '前進' : '後退';
   }
