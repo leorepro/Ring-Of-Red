@@ -8,7 +8,7 @@ import { rangeSway, PART_POS } from './combat.js';
 // engagement distances pulled far out — at this range a tiny aim wobble
 // walks the point of impact from the head down to the legs (sniper feel)
 const RANGE_DIST = { SHORT: 200, MEDIUM: 360, LONG: 520 };
-const ENEMY_SCALE = 0.48;              // tiny, distant figure (30% — long sniper range)
+const ENEMY_SCALE = 0.96;              // small distant figure (long sniper range)
 const ENEMY_BASE_Y = -1.0;             // biped model is built with feet at y≈0
 
 // cold day vs night palettes
@@ -363,37 +363,85 @@ export class World {
     const rumRoll  = Math.sin(T * 61 + 2) * 0.017 * rb;
     const rumPitch = Math.sin(T * 69) * 0.014 * rb;
 
-    this.camera.position.set(
-      this.kickPos.x + swayX + rumX + rnd() * rp,
-      7.6 + this.kickPos.y + bobY + rumY + rnd() * rp,
-      6 + this.kickPos.z + lurchZ + rnd() * rp * 0.5,
-    );
-    this.camera.rotation.set(
-      -0.04 + sy + pitchG + this.kickRot.x + rumPitch + rnd() * rr,
-      sx + this.kickRot.y + rnd() * rr,
-      rollZ + this.kickRot.z + rumRoll + rnd() * rr * 0.7,
-    );
-    this.rig.position.copy(this.camera.position);
-    this.rig.rotation.copy(this.camera.rotation);
-    // foreground barrel slams backward then settles, shuddering as it does
-    if (this.myBarrel) {
-      this.myBarrel.position.z = this.barrelBaseZ + this.barrelKick * 2.2
-        + Math.sin(T * 70) * 0.09 * rb;
-    }
+    const ending = state.phase === 'ending';
+    if (ending) {
+      // multi-angle bullet-time kill cam (no first-person rig)
+      this.rig.visible = false;
+      this._cineCam(dt, state);
+    } else {
+      this.rig.visible = true;
+      this._endingPrev = false;
+      this.camera.position.set(
+        this.kickPos.x + swayX + rumX + rnd() * rp,
+        7.6 + this.kickPos.y + bobY + rumY + rnd() * rp,
+        6 + this.kickPos.z + lurchZ + rnd() * rp * 0.5,
+      );
+      this.camera.rotation.set(
+        -0.04 + sy + pitchG + this.kickRot.x + rumPitch + rnd() * rr,
+        sx + this.kickRot.y + rnd() * rr,
+        rollZ + this.kickRot.z + rumRoll + rnd() * rr * 0.7,
+      );
+      this.rig.position.copy(this.camera.position);
+      this.rig.rotation.copy(this.camera.rotation);
+      // foreground barrel slams backward then settles, shuddering as it does
+      if (this.myBarrel) {
+        this.myBarrel.position.z = this.barrelBaseZ + this.barrelKick * 2.2
+          + Math.sin(T * 70) * 0.09 * rb;
+      }
 
-    // ---- scope zoom: tighten FOV as accuracy passes ~55% (sniper zoom-in) ----
-    const acc = state.phase === 'battle' ? state.me.acc : 0;
-    const zoom = Math.max(0, Math.min(1, (acc - 55) / 38));   // 55%→95%
-    const targetFov = this._baseFov * (1 - 0.42 * zoom);
-    if (Math.abs(this.camera.fov - targetFov) > 0.05) {
-      this.camera.fov += (targetFov - this.camera.fov) * Math.min(1, dt * 5);
-      this.camera.updateProjectionMatrix();
+      // ---- scope zoom: tighten FOV as accuracy passes ~55% (sniper zoom-in) ----
+      const acc = state.phase === 'battle' ? state.me.acc : 0;
+      const zoom = Math.max(0, Math.min(1, (acc - 55) / 38));   // 55%→95%
+      const targetFov = this._baseFov * (1 - 0.42 * zoom);
+      if (Math.abs(this.camera.fov - targetFov) > 0.05) {
+        this.camera.fov += (targetFov - this.camera.fov) * Math.min(1, dt * 5);
+        this.camera.updateProjectionMatrix();
+      }
     }
 
     this._consumeFx(state);
     this._updateEffects(dt);
-    this._project(state);
+    if (!ending) this._project(state);
     this.renderer.render(this.scene, this.camera);
+  }
+
+  // Cinematic kill cam: cut between several angles over the ~5s slow-mo to
+  // show the finishing shell from multiple perspectives.
+  _cineCam(dt, state) {
+    if (!this._endingPrev) { this._endingPrev = true; this._cineFov = 52; }
+    const up = new THREE.Vector3(0, 1, 0);
+    const S = this._killFrom ? this._killFrom.clone() : new THREE.Vector3(0, 8, 0);
+    const E = this._killTo ? this._killTo.clone() : this._enemyPartWorld('torso');
+    const P = (this._killActive && this._killPos) ? this._killPos.clone()
+            : (this._killImpact ? this._killImpact.clone() : E.clone());
+    const dir = E.clone().sub(S); const len = Math.max(1, dir.length()); dir.normalize();
+    const side = new THREE.Vector3().crossVectors(dir, up).normalize();
+    const t = state.endStart ? (performance.now() - state.endStart) / 1000 : 0;
+
+    let pos, look, fov = 50;
+    if (t < 1.7) {
+      // side tracking shot following the bolt down the trajectory
+      const mid = S.clone().lerp(E, 0.5);
+      pos = mid.add(side.clone().multiplyScalar(len * 0.16 + 24)).add(up.clone().multiplyScalar(14));
+      look = P; fov = 48;
+    } else if (t < 3.3) {
+      // reverse angle near the target: the shell streaking in
+      pos = E.clone().addScaledVector(dir, -34).addScaledVector(side, 24).addScaledVector(up, 14);
+      look = P.clone().lerp(E, 0.5); fov = 46;
+    } else {
+      // impact close-up, slow orbit around the strike point
+      const a = t * 0.9;
+      pos = E.clone()
+        .addScaledVector(side, Math.cos(a) * 18)
+        .addScaledVector(dir, Math.sin(a) * 18 - 6)
+        .addScaledVector(up, 9);
+      look = E; fov = 42;
+    }
+    this.camera.position.lerp(pos, Math.min(1, dt * 8));
+    this.camera.lookAt(look);
+    this._cineFov += (fov - this._cineFov) * Math.min(1, dt * 4);
+    this.camera.fov = this._cineFov;
+    this.camera.updateProjectionMatrix();
   }
 
   // Project the enemy's part positions to screen so the HUD reticle and part
@@ -451,28 +499,30 @@ export class World {
           ? this._enemyPartWorld(e.part)
           : this._enemyPartWorld('torso').add(new THREE.Vector3((rnd() < 0 ? -1 : 1) * (14 + Math.random() * 14), 6 + Math.random() * 10, 0));
         const col = e.shrapnel ? 0xffd27a : (e.hit ? 0xfff0b0 : 0xffcc66);
+        if (e.kill) this._trackKill(from, target);
         this._projectile(from, target, col, (p) => {
           if (e.hit) {
             this._explosion(p, e.kill ? 150 : (e.shrapnel ? 30 : 60));
             this.kickVel.z += 1.5; this.trauma = Math.max(this.trauma, e.kill ? 0.8 : 0.3);
-            if (e.kill) { this._explosion(p, 90); state.killLanded = true; }
+            if (e.kill) { this._explosion(p, 90); this._killActive = false; this._killImpact = p.clone(); state.killLanded = true; }
           } else this._dirt(p);
-        });
+        }, e.kill ? (p) => this._killPos.copy(p) : null);
       } else if (e.type === 'shot' && e.side === 'foe') {
         // enemy fires from its hand toward us; impact reaction on arrival
         const from = this._foeMuzzleWorld();
         const aimAt = this.camera.position.clone().add(new THREE.Vector3(rnd() * 2, -1, 2));
         const target = e.hit ? aimAt : aimAt.add(new THREE.Vector3((rnd() < 0 ? -1 : 1) * 18, 6 + Math.random() * 8, 0));
         this._muzzleFlash(from, 0xffae5a);
+        if (e.kill) this._trackKill(from, target);
         this._projectile(from, target, e.hit ? 0xff8855 : 0xffcc66, (p) => {
           if (e.hit) {
             const d = Math.random() < 0.5 ? -1 : 1;
             this.kickVel.x += d * 10; this.kickVel.z += 6; this.kickVel.y += Math.abs(rnd()) * 5;
             this.kickRotVel.z += d * 1.7; this.kickRotVel.x += 0.9;
             this.trauma = 1; this.rumble = Math.max(this.rumble, 0.85); this._redFlash();
-            if (e.kill) { this._explosion(p, 120); state.killLanded = true; }
+            if (e.kill) { this._explosion(p, 120); this._killActive = false; this._killImpact = p.clone(); state.killLanded = true; }
           } else { this.kickVel.x += (Math.random() < 0.5 ? -1 : 1) * 3; this.trauma = Math.max(this.trauma, 0.25); }
-        });
+        }, e.kill ? (p) => this._killPos.copy(p) : null);
       } else if (e.type === 'evade') {
         const d = Math.random() < 0.5 ? -1 : 1;
         this.kickVel.x += d * 12; this.kickRotVel.z += d * 1.5;
@@ -512,8 +562,8 @@ export class World {
     }
   }
 
-  // a shell that visibly flies from -> to, then triggers onArrive at impact
-  _projectile(from, to, color, onArrive) {
+  // a shell that visibly flies from -> to; onStep(p,k) each frame, onArrive at impact
+  _projectile(from, to, color, onArrive, onStep) {
     const dir = to.clone().sub(from);
     const dist = dir.length(); dir.normalize();
     const dur = Math.max(0.08, Math.min(1.3, dist / 430));
@@ -527,6 +577,7 @@ export class World {
       t += dt; const k = Math.min(1, t / dur);
       const p = from.clone().addScaledVector(dir, dist * k);
       bolt.position.copy(p); light.position.copy(p);
+      if (onStep) onStep(p, k);
       if (k >= 1) {
         this.scene.remove(bolt, light); bolt.geometry.dispose(); bolt.material.dispose();
         if (onArrive) onArrive(p);
@@ -534,6 +585,12 @@ export class World {
       }
       return true;
     });
+  }
+
+  // record a finishing shell so the cinematic kill cam can follow it
+  _trackKill(from, to) {
+    this._killFrom = from.clone(); this._killTo = to.clone();
+    this._killPos = from.clone(); this._killImpact = null; this._killActive = true;
   }
 
   _muzzleFlash(pos, color) {

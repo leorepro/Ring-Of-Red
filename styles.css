@@ -244,6 +244,9 @@ canvas#scene{position:fixed;inset:0;width:100%;height:100%;display:block;z-index
 .cine.show{opacity:1}
 .cine.show::before,.cine.show::after{transform:scaleY(1)}
 .cine.show span{opacity:.95}
+/* clean cinematic: hide the gameplay HUD during the kill cam (keep HP + banner) */
+body.ending .scope,body.ending .gauges,body.ending .squad,body.ending .self-parts,
+body.ending .deck,body.ending #heatwarn{opacity:0;pointer-events:none;transition:opacity .3s}
 
 /* shorter screens (landscape phones): tuck gauges/squad in a bit */
 @media (orientation:landscape) and (max-height:430px){

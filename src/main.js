@@ -33,6 +33,7 @@ function startBattle() {
   titleEl.classList.add('hidden');
   resultEl.classList.add('hidden');
   document.getElementById('cine').classList.remove('show');
+  document.body.classList.remove('ending');
   hud.show();
   running = true;
 }
@@ -48,6 +49,7 @@ function finish() {
     : (state.me.hp <= 0 ? '本機被擊毀。下次更早收手去迴避那記高命中。' : '時間耗盡 — 以殘存戰力判定，未能壓制敵機。');
   document.getElementById('battle-result').innerHTML = battleResult(state);
   document.getElementById('cine').classList.remove('show');
+  document.body.classList.remove('ending');
   resultEl.classList.remove('hidden');
 }
 
@@ -110,6 +112,7 @@ function frame(now) {
       // killing blow in bullet-time: letterbox on, freeze sim, let the
       // finishing shell fly in slow motion, then resolve after ~5s wall-clock
       cine.classList.add('show');
+      document.body.classList.add('ending');
       if (!state.endStart) state.endStart = now;
       hud.render(state);
       if (now - state.endStart >= ENDING_DURATION * 1000) { state.phase = state.endResult; finish(); }
