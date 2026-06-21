@@ -30,10 +30,15 @@ export class World {
 
     this.dist = RANGE_DIST.MEDIUM;
     this.targetDist = this.dist;
-    this.shake = 0;
-    this.recoil = 0;        // upward kick of the gunner view on firing
-    this.barrelKick = 0;    // foreground barrel recoiling backward
-    this.slide = new THREE.Vector3();
+    // Heavy spring-driven camera kick — gives recoil & impacts real mass:
+    // they lurch the view out and let it swing back with inertia, instead
+    // of a weightless per-frame jitter.
+    this.kickPos = new THREE.Vector3();
+    this.kickVel = new THREE.Vector3();
+    this.kickRot = new THREE.Vector3();      // x = pitch, y = yaw, z = roll
+    this.kickRotVel = new THREE.Vector3();
+    this.trauma = 0;                          // brief metallic rattle on top
+    this.barrelKick = 0;                      // foreground barrel recoiling back
     this.effects = [];
     this.t = 0;
     this.lastNight = null;
@@ -224,31 +229,44 @@ export class World {
     });
     this._enemy.position.y += Math.sin(this.t * gait * 2) * amp * 0.2;
 
-    // gunner aim: residual sway shrinks as accuracy climbs
-    const sway = state.phase === 'battle' ? rangeSway(state) * 0.012 : 0.004;
-    const sx = Math.sin(this.t * 1.7) * sway + (Math.random() - 0.5) * sway * 0.4;
-    const sy = Math.cos(this.t * 1.3) * sway * 0.7 + (Math.random() - 0.5) * sway * 0.4;
+    // gunner aim micro-sway (shrinks as accuracy climbs)
+    const sway = state.phase === 'battle' ? rangeSway(state) * 0.010 : 0.004;
+    const sx = Math.sin(this.t * 1.7) * sway;
+    const sy = Math.cos(this.t * 1.3) * sway * 0.7;
 
-    // shake + recoil + dodge slide (decay)
-    this.shake = Math.max(0, this.shake - dt * 6);
-    this.recoil = Math.max(0, this.recoil - dt * 7);
+    // ---- heavy walking-gait motion ----
+    // The gunner rides a multi-ton walking tank: a slow, weighty cadence with
+    // a side-to-side weight shift, an up-down footfall pound, a fore-aft surge
+    // as it strides forward, plus the lean/nod that go with each step.
+    const moving = state.moving > 0;
+    const step = (moving ? 1.45 : 0.8) * Math.PI * 2;   // slow, heavy cadence
+    const ph = this.t * step;
+    const weight = moving ? 1 : 0.5;                     // idle still shifts mass
+    const swayX  = Math.sin(ph) * 0.55 * weight;         // weight rolls L↔R
+    const bobY   = Math.sin(ph * 2) * 0.24 * weight;     // footfall pound (2/stride)
+    const lurchZ = moving
+      ? (0.6 - Math.cos(ph * 2) * 0.6) * 1.5             // surges forward each stride
+      : Math.sin(ph * 2) * 0.10;                         // idle fore-aft breathing
+    const rollZ  = Math.sin(ph) * 0.032 * weight;        // leans into each step
+    const pitchG = Math.sin(ph * 2 + 0.6) * 0.024 * weight; // nods on footfall
+
+    // ---- heavy spring kick (recoil / impacts) + brief metallic rattle ----
+    this._integrateKick(dt);
+    this.trauma = Math.max(0, this.trauma - dt * 1.8);
     this.barrelKick = Math.max(0, this.barrelKick - dt * 6);
-    this.slide.multiplyScalar(Math.max(0, 1 - dt * 5));
-
-    // positional jolt (stronger now) + rotational rattle
-    const sh = this.shake * 1.6;
-    const rot = this.shake * 0.05;
-    const kick = this.recoil * 0.12;             // camera pitches up on firing
+    const tr = this.trauma * this.trauma;
+    const rp = tr * 0.22, rr = tr * 0.018;
+    const rnd = () => Math.random() - 0.5;
 
     this.camera.position.set(
-      this.slide.x + (Math.random() - 0.5) * sh,
-      7.6 + this.slide.y + (Math.random() - 0.5) * sh,
-      6 + this.slide.z + this.recoil * 0.6,        // shoves back a touch
+      this.kickPos.x + swayX + rnd() * rp,
+      7.6 + this.kickPos.y + bobY + rnd() * rp,
+      6 + this.kickPos.z + lurchZ + rnd() * rp * 0.5,
     );
     this.camera.rotation.set(
-      sy - 0.04 + kick + (Math.random() - 0.5) * rot,
-      sx + (Math.random() - 0.5) * rot,
-      this.slide.x * 0.01 + (Math.random() - 0.5) * rot * 0.6,
+      -0.04 + sy + pitchG + this.kickRot.x + rnd() * rr,
+      sx + this.kickRot.y + rnd() * rr,
+      rollZ + this.kickRot.z + rnd() * rr * 0.7,
     );
     this.rig.position.copy(this.camera.position);
     this.rig.rotation.copy(this.camera.rotation);
@@ -260,32 +278,64 @@ export class World {
     this.renderer.render(this.scene, this.camera);
   }
 
+  // Underdamped spring → an impulse throws the view out, then it swings
+  // back and settles. Low stiffness = slow, heavy, armoured inertia.
+  _integrateKick(dt) {
+    const k = 55, c = 11;                       // stiffness / damping
+    const steps = 3, h = Math.min(dt, 0.05) / steps;
+    for (let i = 0; i < steps; i++) {
+      this.kickVel.addScaledVector(this.kickPos, -k * h);
+      this.kickVel.addScaledVector(this.kickVel, -c * h);
+      this.kickPos.addScaledVector(this.kickVel, h);
+      this.kickRotVel.addScaledVector(this.kickRot, -k * h);
+      this.kickRotVel.addScaledVector(this.kickRotVel, -c * h);
+      this.kickRot.addScaledVector(this.kickRotVel, h);
+    }
+  }
+
   // ---------- visual events ----------
   _consumeFx(state) {
     if (!state.fx || !state.fx.length) return;
+    const rnd = () => Math.random() - 0.5;
     for (const e of state.fx) {
       if (e.type === 'fire' && e.side === 'me') {
         this._muzzleFlash(this._myMuzzleWorld(), 0xffd27a);
-        // firing recoil — heavy artillery kick
-        this.shake = Math.max(this.shake, 2.6);
-        this.recoil = Math.max(this.recoil, 1);
+        // heavy artillery recoil: pitch up, heave, and shove the whole hull back
+        this.kickRotVel.x += 1.0;                       // muzzle climbs
+        this.kickRotVel.z += rnd() * 0.5;               // slight twist
+        this.kickVel.y += 2.6;
+        this.kickVel.z += 7.5;                          // recoils backward
+        this.trauma = Math.max(this.trauma, 0.7);
         this.barrelKick = 1;
       } else if (e.type === 'fire' && e.side === 'foe') {
         this._muzzleFlash(this._foeMuzzleWorld(), 0xffae5a);
         this._tracer(this._foeMuzzleWorld(), this.camera.position.clone().add(new THREE.Vector3(0, -1, 2)), 0xff8855);
       } else if (e.type === 'impact' && e.side === 'foe') {
         this._explosion(this._enemy.position.clone().setY(5), e.dmg);
-        this.shake = Math.max(this.shake, 1.8);
+        // our hit lands downrange — modest feedback through the hull
+        this.kickVel.z += 2;
+        this.kickRotVel.x += 0.3;
+        this.trauma = Math.max(this.trauma, 0.35);
       } else if (e.type === 'impact' && e.side === 'me') {
-        this.shake = Math.max(this.shake, 3.4);
+        // taking a shell: a violent, heavy lurch sideways + roll
+        const d = Math.random() < 0.5 ? -1 : 1;
+        this.kickVel.x += d * 10;
+        this.kickVel.z += 6;
+        this.kickVel.y += Math.abs(rnd()) * 5;
+        this.kickRotVel.z += d * 1.7;                   // hull rolls from the blow
+        this.kickRotVel.x += 0.9;
+        this.trauma = 1;
         this._redFlash();
       } else if (e.type === 'miss' && e.side === 'foe') {
         this._tracer(this._myMuzzleWorld(), this._enemy.position.clone().add(new THREE.Vector3(8, 6, 4)), 0xffcc66);
       } else if (e.type === 'miss' && e.side === 'me') {
         this._dirt(this.camera.position.clone().add(new THREE.Vector3(6, -2, -8)));
       } else if (e.type === 'evade') {
-        this.slide.x = (Math.random() < 0.5 ? -1 : 1) * 5.5;
-        this.shake = Math.max(this.shake, 0.8);
+        // a hard, weighty juke to the side to slip the incoming shell
+        const d = Math.random() < 0.5 ? -1 : 1;
+        this.kickVel.x += d * 12;
+        this.kickRotVel.z += d * 1.5;
+        this.trauma = Math.max(this.trauma, 0.5);
       }
       if (e.type === 'fire' && e.side === 'me') {
         this._tracer(this._myMuzzleWorld(), this._enemy.position.clone().setY(5.5), e.hit ? 0xfff0b0 : 0xffcc66, e.hit);
