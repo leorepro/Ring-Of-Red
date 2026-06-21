@@ -17,6 +17,7 @@ export function bindControls(actions) {
   tap(document.getElementById('btn-skill'), actions.skill);
   tap(document.getElementById('btn-shell'), actions.shell);
   tap(document.getElementById('btn-weapon'), actions.weapon);
+  tap(document.getElementById('btn-halt'), actions.halt);
 
   // keyboard for desktop testing
   // ✕=Space/J fire, L dodge, M move, K Maximum Attack, C switch shell
@@ -30,6 +31,7 @@ export function bindControls(actions) {
       case 'c': actions.shell(); break;
       case 'r': case 't': actions.target(); break;
       case 'q': actions.weapon(); break;
+      case 'h': actions.halt(); break;
     }
   });
 

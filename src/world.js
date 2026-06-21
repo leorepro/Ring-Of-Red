@@ -8,8 +8,8 @@ import { audio } from './audio.js';
 
 // engagement distances pulled far out — at this range a tiny aim wobble
 // walks the point of impact from the head down to the legs (sniper feel)
-const RANGE_DIST = { SHORT: 200, MEDIUM: 360, LONG: 520 };
-const ENEMY_SCALE = 4.4;               // ~1/8 of screen height at MEDIUM range
+const RANGE_DIST = { SHORT: 400, MEDIUM: 720, LONG: 1040 };   // battlefield doubled out
+const ENEMY_SCALE = 8.8;               // doubled with the range → ~1/8 screen height holds
 const ENEMY_BASE_Y = 1.4 * ENEMY_SCALE - 0.6;    // keep the feet (~-1.4 local) on the ground
 // our gunner rides atop our own AFW, so the sight is level with the enemy's
 // mid-body — looking straight across, not craning up at it
@@ -118,11 +118,11 @@ export class World {
   }
 
   _buildGround() {
-    this.scene.fog = new THREE.Fog(DAY.fog, 80, 560);
+    this.scene.fog = new THREE.Fog(DAY.fog, 150, 1600);
     this.scene.background = new THREE.Color(DAY.sky);
 
     // large low-poly displaced terrain (battlefield is long now)
-    const geo = new THREE.PlaneGeometry(2600, 2600, 110, 110);
+    const geo = new THREE.PlaneGeometry(4200, 4200, 120, 120);
     geo.rotateX(-Math.PI / 2);
     const pos = geo.attributes.position;
     for (let i = 0; i < pos.count; i++) {
@@ -141,7 +141,7 @@ export class World {
 
     // battlefield kept clear of props — only the enemy AFW stands on it
     this.debris = [];
-    this._zNear = 30; this._zFar = -950;
+    this._zNear = 30; this._zFar = -1900;
   }
 
   // a detailed bipedal AFW: head, torso, two arm-cannons (the "hands" that
@@ -257,8 +257,8 @@ export class World {
     this.lastNight = night;
     const p = night ? NIGHT : DAY;
     this.scene.fog.color.setHex(p.fog);
-    this.scene.fog.near = night ? 90 : 130;
-    this.scene.fog.far = night ? 760 : 980;
+    this.scene.fog.near = night ? 140 : 200;
+    this.scene.fog.far = night ? 1300 : 1600;
     this.scene.background.setHex(p.sky);
     this.groundMat.color.setHex(p.ground);
     this.hemi.color.setHex(p.hemiSky); this.hemi.groundColor.setHex(p.hemiGround);
@@ -282,8 +282,9 @@ export class World {
     // Both AFWs are constantly marching forward: scroll the battlefield
     // toward the camera (faster while relocating range) so the ground and
     // debris flow past, selling the advance without breaking the range system.
-    const marching = state.moving > 0;
-    const scroll = (marching ? 40 : 12) * dt;
+    const relocating = state.moving > 0;
+    const meMarching = !(state.me && state.me.halted);
+    const scroll = (relocating ? 40 : meMarching ? 14 : 0) * dt;
     if (this.debris) {
       for (const m of this.debris) {
         m.position.z += scroll;
@@ -299,9 +300,10 @@ export class World {
     this.dist += (this.targetDist - this.dist) * Math.min(1, dt * 2.2);
     this._enemy.position.set(0, ENEMY_BASE_Y, -this.dist);
 
-    // walking gait — the two legs stride in alternation, always marching
-    const gait = marching ? 8 : 3.6;
-    const amp = marching ? 0.6 : 0.34;
+    // walking gait — strides while marching, settles to a near-stop when halted
+    const foeMarching = !(state.foe && state.foe.halted);
+    const gait = foeMarching ? (relocating ? 8 : 5) : 1.4;
+    const amp = foeMarching ? (relocating ? 0.6 : 0.42) : 0.07;
     this._enemy.userData.legs.forEach((leg) => {
       const a = Math.sin(this.t * gait + leg.phase) * amp;
       leg.grp.rotation.x = a;
@@ -330,7 +332,8 @@ export class World {
       const node = this._enemy.userData.parts[nm]; const f = node.userData.fall;
       if (f) {
         f.vy -= 22 * dt;
-        node.position.x += f.vx * dt; node.position.y += f.vy * dt; node.rotation.z += f.vr * dt;
+        node.position.x += f.vx * dt; node.position.y += f.vy * dt; node.position.z += (f.vz || 0) * dt;
+        node.rotation.z += f.vr * dt; node.rotation.x += (f.vrx || 0) * dt;
         f.life -= dt; if (f.life <= 0) { node.visible = false; node.userData.fall = null; }
       }
     }
@@ -340,16 +343,17 @@ export class World {
     const sx = Math.sin(this.t * 1.7) * sway;
     const sy = Math.cos(this.t * 1.3) * sway * 0.7;
 
-    // ---- walking-gait motion (gentle: keep the sight steady near the reticle) ----
-    const moving = state.moving > 0;
-    const step = (moving ? 1.45 : 0.8) * Math.PI * 2;
+    // ---- walking-gait motion: halt = planted & steady, march = weaving sway ----
+    const fastMove = state.moving > 0;                    // relocating range
+    const marching = !(state.me && state.me.halted);      // default stance keeps moving
+    const step = (fastMove ? 1.45 : marching ? 1.1 : 0.7) * Math.PI * 2;
     const ph = this.t * step;
-    const weight = moving ? 0.7 : 0.32;                   // idle barely shifts
-    const swayX  = Math.sin(ph) * 0.32 * weight;
+    const weight = fastMove ? 0.85 : marching ? 0.55 : 0.16;   // halt barely shifts
+    const swayX  = Math.sin(ph) * 0.34 * weight;
     const bobY   = Math.sin(ph * 2) * 0.13 * weight;
-    const lurchZ = moving
+    const lurchZ = fastMove
       ? (0.6 - Math.cos(ph * 2) * 0.6) * 1.0
-      : Math.sin(ph * 2) * 0.05;
+      : Math.sin(ph * 2) * 0.05 * weight;
     const rollZ  = Math.sin(ph) * 0.016 * weight;
     const pitchG = Math.sin(ph * 2 + 0.6) * 0.012 * weight;
 
@@ -505,16 +509,17 @@ export class World {
         const target = e.hit && e.part
           ? this._enemyPartWorld(e.part)
           : this._enemyPartWorld('torso').add(new THREE.Vector3((rnd() < 0 ? -1 : 1) * (14 + Math.random() * 14), 6 + Math.random() * 10, 0));
-        const col = e.shrapnel ? 0xffd27a : (e.hit ? 0xfff0b0 : 0xffcc66);
         if (e.kill) this._trackKill(from, target);
-        this._projectile(from, target, col, (p) => {
+        const arrive = (p) => {
           if (e.hit) {
             if (e.shrapnel) { this._explosion(p, 34); this._sparks(p, 0xffd27a, 8, 18); audio.explosion(false); }
             else { this._impactFx(e.part || 'torso', p, e.crit); e.crit ? audio.crit() : audio.explosion(false); }
             this.kickVel.z += 1.2; this.trauma = Math.max(this.trauma, e.crit ? 0.5 : 0.3);
             if (e.kill) { this._explosion(p, 120); this._shockwave(p, 0xffffff, 32); this._killActive = false; this._killImpact = p.clone(); state.killLanded = true; }
           } else this._dirtGeyser(p);
-        }, e.kill ? (p) => this._killPos.copy(p) : null);
+        };
+        const onStep = e.kill ? (p) => this._killPos.copy(p) : null;
+        this._fireWeaponVfx(e.weapon, from, target, arrive, onStep, e.hit);
       } else if (e.type === 'shot' && e.side === 'foe') {
         // enemy fires from its hand toward us; impact reaction on arrival
         const from = this._foeMuzzleWorld();
@@ -583,10 +588,12 @@ export class World {
       const stump = node; setTimeout(() => {}, 0);
       void stump;
     } else if (name === 'armL' || name === 'armR') {
-      // arm cannon blown off — big blast, arm drops and detaches
-      this._explosion(wp, 150); this._sparks(wp, 0xffae5a, 22, 30); this._debrisBurst(wp, 0x6f5d42, 12, 22);
+      // arm cannon blown clean off — big blast, the whole arm launches away,
+      // tumbling, with a sparking severed shoulder
+      this._explosion(wp, 175); this._shockwave(wp, 0xffd27a, 26);
+      this._sparks(wp, 0xffae5a, 28, 40); this._debrisBurst(wp, 0xa8854f, 16, 30);
       const dir = name === 'armL' ? 1 : -1;
-      node.userData.fall = { vx: dir * 6, vy: 4, vr: dir * 3, life: 1.6 };
+      node.userData.fall = { vx: dir * 16, vy: 11, vz: -5, vr: dir * 9, vrx: 6, life: 2.6 };
     } else if (name === 'legL' || name === 'legR') {
       // leg crippled — buckles, mech lists to that side
       this._explosion(wp, 130); this._sparks(wp, 0xffe0a0, 18, 24); this._debrisBurst(wp, 0x33373a, 10, 18);
@@ -597,21 +604,102 @@ export class World {
     }
   }
 
-  // a shell that visibly flies from -> to; onStep(p,k) each frame, onArrive at impact
-  _projectile(from, to, color, onArrive, onStep) {
+  // per-weapon shot visuals: each gun fires a distinct projectile (or a spread
+  // / burst of them). Only the "primary" round carries the impact + kill hooks.
+  _fireWeaponVfx(weapon, from, to, arrive, onStep, hit) {
+    const rnd = () => Math.random() - 0.5;
+    switch (weapon) {
+      case 'sniper': {
+        // a single hyper-fast, thin blue-white tracer + a streaking beam
+        this._tracer(from, to, 0x9fd0ff, true);
+        this._projectile(from, to, 0xdff2ff, arrive, onStep, { size: 1.0, speed: 1300, trail: 'tracer' });
+        break;
+      }
+      case 'mg': {
+        // a rapid stream of small staggered tracer rounds
+        const N = 6;
+        for (let i = 0; i < N; i++) {
+          const last = i === N - 1;
+          const tt = to.clone().add(new THREE.Vector3(rnd() * 9, rnd() * 9, rnd() * 5));
+          this._projectile(from, tt, 0xffe27a, last ? arrive : null, last ? onStep : null,
+            { size: 0.8, speed: 1500, trail: 'tracer', delay: i * 0.05 });
+        }
+        break;
+      }
+      case 'missile': {
+        // slow rocket lobbed on a high parabolic arc, leaving a smoke trail
+        const arc = Math.max(60, from.distanceTo(to) * 0.17);
+        this._projectile(from, to, 0xffcaa0, arrive, onStep, { size: 2.6, speed: 320, arc, trail: 'smoke' });
+        break;
+      }
+      case 'shrap': {
+        // a fan of fragments diverging onto the silhouette
+        const N = 6;
+        for (let i = 0; i < N; i++) {
+          const primary = i === 0;
+          const tt = to.clone().add(new THREE.Vector3(rnd() * 34, rnd() * 26, rnd() * 12));
+          this._projectile(from, tt, 0xffd27a,
+            primary ? arrive : (p) => this._sparks(p, 0xffae5a, 5, 14),
+            primary ? onStep : null, { size: 1.3, speed: 560 });
+        }
+        break;
+      }
+      case 'rail': {
+        // an instant lance: thick beam + a blink-fast core round
+        this._tracer(from, to, 0xbfe0ff, true);
+        this._projectile(from, to, 0xeaf6ff, arrive, onStep, { size: 1.6, speed: 2400, trail: 'tracer' });
+        break;
+      }
+      default: { // cannon — heavy glowing shell
+        this._projectile(from, to, hit ? 0xfff0b0 : 0xffcc66, arrive, onStep, { size: 2.3, speed: 430 });
+      }
+    }
+  }
+
+  // a tiny additive dot left in a tracer's wake
+  _trailDot(pos, color) {
+    const m = new THREE.Mesh(new THREE.SphereGeometry(0.6, 6, 6),
+      new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.8, blending: THREE.AdditiveBlending, depthWrite: false }));
+    m.position.copy(pos); this.scene.add(m);
+    let life = 0.2;
+    this.effects.push((dt) => {
+      life -= dt; m.material.opacity = Math.max(0, life / 0.2) * 0.8; m.scale.setScalar(1 + (1 - life / 0.2) * 0.6);
+      if (life <= 0) { this.scene.remove(m); m.geometry.dispose(); m.material.dispose(); return false; }
+      return true;
+    });
+  }
+
+  // a shell that visibly flies from -> to; opts: size/speed/arc/delay/trail.
+  // onStep(p,k) each frame, onArrive at impact.
+  _projectile(from, to, color, onArrive, onStep, opts = {}) {
+    const size = opts.size ?? 2.0, speed = opts.speed ?? 430;
+    const arc = opts.arc ?? 0, delay = opts.delay ?? 0;
     const dir = to.clone().sub(from);
     const dist = dir.length(); dir.normalize();
-    const dur = Math.max(0.08, Math.min(1.3, dist / 430));
-    const bolt = new THREE.Mesh(new THREE.SphereGeometry(2.0, 8, 8),
+    const dur = Math.max(0.06, Math.min(1.6, dist / speed));
+    const bolt = new THREE.Mesh(new THREE.SphereGeometry(size, 8, 8),
       new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.95, blending: THREE.AdditiveBlending, depthWrite: false }));
     const light = new THREE.PointLight(color, 3, 70, 2);
+    bolt.visible = delay <= 0;
     bolt.position.copy(from); light.position.copy(from);
     this.scene.add(bolt, light);
-    let t = 0;
+    let t = 0, trailT = 0;
     this.effects.push((dt) => {
-      t += dt; const k = Math.min(1, t / dur);
+      t += dt;
+      if (t < delay) return true;
+      bolt.visible = true;
+      const k = Math.min(1, (t - delay) / dur);
       const p = from.clone().addScaledVector(dir, dist * k);
+      if (arc) p.y += arc * Math.sin(Math.PI * k);     // parabolic lob (missiles)
       bolt.position.copy(p); light.position.copy(p);
+      if (opts.trail) {
+        trailT += dt; const iv = opts.trail === 'smoke' ? 0.028 : 0.013;
+        if (trailT >= iv) {
+          trailT = 0;
+          if (opts.trail === 'smoke') this._smoke(p.clone(), 0x9a8f80, 2.0, 3, 0.45);
+          else this._trailDot(p.clone(), color);
+        }
+      }
       if (onStep) onStep(p, k);
       if (k >= 1) {
         this.scene.remove(bolt, light); bolt.geometry.dispose(); bolt.material.dispose();

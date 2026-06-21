@@ -36,6 +36,11 @@ const RANGE_CFG = {
   MEDIUM: { ceil: 92, ramp: 36, dmg: 28, sway: 1.0 },
   LONG:   { ceil: 82, ramp: 27, dmg: 20, sway: 1.7 },
 };
+// how lethal the range is — hit probability climbs ~exponentially as the two
+// AFWs close the gap (LONG ≪ MEDIUM ≪ SHORT). Scales both sides' hit chance.
+const RANGE_HIT = { SHORT: 1.9, MEDIUM: 1.0, LONG: 0.5 };
+// rough metres shown on the distance bar (doubled-out battlefield)
+export const RANGE_METERS = { SHORT: 400, MEDIUM: 720, LONG: 1040 };
 
 // switchable weapons; main cannon is unlimited, specials carry limited ammo.
 // kind: how the shot resolves; mods tweak aim/heat/reload; dmg is a multiplier
@@ -96,14 +101,16 @@ export function createState() {
       shell: 'AT', max: 1, maxArmed: false,
       targetPart: 'torso',         // which enemy part we're aiming at
       weapon: 'cannon', ammo: initAmmo(),
+      halted: false,               // stance: marching (drifty aim, evasive) vs halted (steady aim, exposed)
     },
     foe: {
       hp: 200, maxHp: 200,
       acc: 0, charge: 0, reload: 0,
       infantry: 16, maxInf: 16, star: 2, pilot: 2,
       squad: mkSquad(SQUADS.foe), parts: mkParts(),
+      halted: false,
     },
-    moving: 0, dodge: 0, pendingFoeAcc: 0, infTick: 0,
+    moving: 0, dodge: 0, pendingFoeAcc: 0, infTick: 0, foeStanceT: 3,
     flash: { me: 0, foe: 0 },
     banner: { text: '', kind: '', t: 0 },
     fx: [],
@@ -148,7 +155,9 @@ function meCeil(state) {
 export function rangeSway(state) {
   const base = RANGE_CFG[state.env.range].sway * (state.env.night ? 1.4 : 1);
   const c = meCeil(state);
-  return base * (1 - 0.85 * (state.me.acc / c));
+  // halting plants the sight (steady); marching keeps it drifting around
+  const stance = state.me.halted ? 0.55 : 1.25;
+  return base * (1 - 0.85 * (state.me.acc / c)) * stance;
 }
 
 function setBanner(state, text, kind, t = 1.1) { state.banner = { text, kind, t }; }
@@ -253,7 +262,14 @@ export function tryFire(state) {
   } else {
     // single-target: cannon / sniper / missile(splash) / rail(pierce)
     const part = maxShot ? me.targetPart : hitPart(state.aim);
-    if (part) {
+    // a marching enemy weaves out of the line of fire; closing the distance
+    // shrinks that window (exponentially), and Maximum Attack ignores it
+    const evade = !maxShot && !state.foe.halted
+      && Math.random() < Math.min(0.34, 0.16 / RANGE_HIT[state.env.range]);
+    if (part && evade) {
+      state.fx.push({ type: 'shot', side: 'me', weapon: W.id, part: null, hit: false });
+      setBanner(state, '敵機迴避 — 未命中', 'evade', 0.8);
+    } else if (part) {
       const crit = W.kind === 'pierce' || part === 'head' || maxShot
         || (W.id === 'sniper' && Math.random() < 0.6) || Math.random() < 0.1;
       const base = baseR * (0.85 + Math.random() * 0.3) * pas.afwDmg * W.dmg * (crit ? 1.6 : 1);
@@ -314,6 +330,14 @@ export function tryShell(state) {
   const me = state.me;
   me.shell = me.shell === 'AT' ? 'AP' : 'AT';
   setBanner(state, me.shell === 'AT' ? '切換・對甲彈' : '切換・對人彈', 'me', 0.8);
+}
+
+// stance toggle: halt to plant the sight (steadier aim, but a far easier
+// target) or march to keep weaving (drifty aim, but harder to hit).
+export function tryHalt(state) {
+  if (state.phase !== 'battle') return;
+  state.me.halted = !state.me.halted;
+  setBanner(state, state.me.halted ? '駐停 — 穩定瞄準（易被擊中）' : '行進 — 迴避中（瞄準飄移）', 'me', 1.0);
 }
 
 function knockSquad(unit) {
@@ -379,7 +403,8 @@ export function update(state, dt) {
     const c = meCeil(state);
     const cfg = RANGE_CFG[env.range];
     const skill = 0.65 + 0.18 * me.pilot;
-    const rate = cfg.ramp * (0.4 + 0.6 * (1 - me.acc / c)) * skill * mp.aim * weaponDef(me.weapon).ramp;
+    const stance = me.halted ? 1.3 : 0.78;     // a planted gun acquires faster
+    const rate = cfg.ramp * (0.4 + 0.6 * (1 - me.acc / c)) * skill * mp.aim * weaponDef(me.weapon).ramp * stance;
     me.acc = Math.min(c, me.acc + rate * dt);
     me.heat = Math.min(100, me.heat + HEAT_AIM * dt);
     if (me.heat >= 100) { me.overheat = true; me.acc = 0; }
@@ -412,7 +437,8 @@ function updateAim(state, dt) {
   const cx = tgt.x * 0.72 + PART_POS.torso.x * 0.28;     // torso bias
   const cy = tgt.y * 0.72 + PART_POS.torso.y * 0.28;
   let amp = 0.7 - 0.6 * acc01;                            // gentler aim wander
-  if (state.moving > 0) amp *= 1.4;                       // advancing spreads the aim
+  amp *= me.halted ? 0.45 : 1.2;                          // halt plants the sight; marching drifts
+  if (state.moving > 0) amp *= 1.4;                       // relocating range spreads the aim further
   if (me.overheat || me.reload > 0) amp *= 1.15;
   if (me.maxArmed) amp *= 0.22;                           // Maximum Attack steadies aim
   const T = state.t;
@@ -453,9 +479,18 @@ function updateEnemy(state, dt) {
   if (foe.reload > 0) { foe.reload = Math.max(0, foe.reload - dt); return; }
   if (state.dodge > 0) return;
 
+  // the enemy also picks a stance: it tends to halt to commit to a near-ready
+  // shot (steady, but exposed) and keep moving otherwise (evasive)
+  state.foeStanceT -= dt;
+  if (state.foeStanceT <= 0) {
+    foe.halted = foe.charge > 55 ? Math.random() < 0.72 : Math.random() < 0.38;
+    state.foeStanceT = rand(2.2, 4.6);
+  }
+
   const c = ceiling(env, foe);
   const skill = 0.8 + 0.14 * foe.pilot;
-  const speed = (18 + (RANGES.indexOf(env.range) === 0 ? 6 : 0)) * skill;
+  const stance = foe.halted ? 1.5 : 0.7;          // planted = charges/aims faster
+  const speed = (18 + (RANGES.indexOf(env.range) === 0 ? 6 : 0)) * skill * stance;
   foe.charge = Math.min(100, foe.charge + speed * dt);
   foe.acc = Math.min(c, (foe.charge / 100) * c);
 
@@ -482,7 +517,12 @@ function enemyTargetPart() {
 function resolveEnemyShot(state) {
   const foe = state.foe;
   state.flash.foe = 0.12;
-  const hit = Math.random() * 100 < state.pendingFoeAcc;
+  // closer range raises the hit chance exponentially; a halted target is far
+  // easier to hit, a moving one weaves away
+  const closeMul = RANGE_HIT[state.env.range];
+  const stanceMul = state.me.halted ? 1.4 : 0.55;
+  const eff = Math.min(99, state.pendingFoeAcc * closeMul * stanceMul);
+  const hit = Math.random() * 100 < eff;
   const part = enemyTargetPart();
   const shotFx = { type: 'shot', side: 'foe', part, hit };
   state.fx.push(shotFx);

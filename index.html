@@ -68,6 +68,17 @@
         </div>
       </div>
 
+      <!-- distance bar: arrows mark each side, closing toward the centre -->
+      <div class="distbar" aria-hidden="true">
+        <span class="db-end me">自機</span>
+        <div class="db-track">
+          <span id="db-val" class="db-val">720m</span>
+          <i id="db-me" class="db-arrow me">▶</i>
+          <i id="db-foe" class="db-arrow foe">◀</i>
+        </div>
+        <span class="db-end foe">敵機</span>
+      </div>
+
       <div class="scope-center" aria-hidden="true">
         <div class="elev elev-l"></div>
         <div class="elev elev-r"></div>
@@ -119,6 +130,9 @@
       <div class="deck-aux">
         <button id="btn-move" class="btn small">
           <span class="k">L1</span>移動<small id="move-lbl">前進</small>
+        </button>
+        <button id="btn-halt" class="btn small">
+          <span class="k">R2</span>機動<small id="halt-lbl">行進</small>
         </button>
         <button id="btn-weapon" class="btn small">
           <span class="k">R1</span><small id="weapon-lbl">主砲</small><i id="weapon-ammo">∞</i>

@@ -6,7 +6,7 @@ import { World } from './world.js';
 import { Hud } from './hud.js';
 import { bindControls } from './input.js';
 import { audio } from './audio.js';
-import { createState, update, tryFire, tryDodge, tryMove, trySkill, tryShell, setTarget, cycleTarget, cycleWeapon, PARTS, PART_CFG } from './combat.js';
+import { createState, update, tryFire, tryDodge, tryMove, trySkill, tryShell, tryHalt, setTarget, cycleTarget, cycleWeapon, PARTS, PART_CFG } from './combat.js';
 
 const world = new World(document.getElementById('scene'));
 const hud = new Hud();
@@ -24,6 +24,7 @@ bindControls({
   shell: () => { if (running) { audio.ui(); tryShell(state); } },
   target: () => { if (running) { audio.ui(); cycleTarget(state); } },
   weapon: () => { if (running) { audio.switchW(); cycleWeapon(state); } },
+  halt: () => { if (running) { audio.ui(); tryHalt(state); } },
 });
 
 // unlock audio on the first user gesture (mobile autoplay policy)

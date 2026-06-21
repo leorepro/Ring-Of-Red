@@ -1,7 +1,7 @@
 // ============================================================
 //  hud.js — gunner dashboard + locational-targeting overlay
 // ============================================================
-import { PARTS, PART_POS, PART_CFG, caps, weaponDef, currentHitPart } from './combat.js';
+import { PARTS, PART_POS, PART_CFG, caps, weaponDef, currentHitPart, RANGE_METERS } from './combat.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -15,6 +15,8 @@ export class Hud {
       banner: $('banner'),
       tzone: $('tzone'), reticle: $('reticle'), acc: $('acc'),
       rangeTop: $('range-top'), loadMe: $('load-me'), loadFoe: $('load-foe'),
+      dbMe: $('db-me'), dbFoe: $('db-foe'), dbVal: $('db-val'),
+      halt: $('btn-halt'), haltLbl: $('halt-lbl'),
       heat: $('heat'), charge: $('charge'), heatwarn: $('heatwarn'),
       squadMe: $('squad-me'), infMe: $('inf-me'), starMe: $('star-me'),
       selfParts: $('self-parts'),
@@ -80,6 +82,13 @@ export class Hud {
     this.el.loadMe.style.left = Math.max(0, Math.min(100, me.acc)) + '%';
     this.el.loadFoe.style.left = (state.dodge > 0 ? 100 : Math.max(0, Math.min(100, foe.charge))) + '%';
 
+    // distance bar: arrows for each side close toward the centre as range drops
+    const close = { LONG: 0, MEDIUM: 0.5, SHORT: 1 }[env.range] ?? 0.5;
+    this.el.dbMe.style.left = (close * 40) + '%';
+    this.el.dbFoe.style.right = (close * 40) + '%';
+    this.el.dbVal.textContent = (RANGE_METERS[env.range] || 720) + 'm';
+    this.el.dbVal.classList.toggle('near', env.range === 'SHORT');
+
     // accuracy readout (turns cyan at high accuracy, like the original)
     const acc = this.el.acc;
     if (me.overheat) { acc.textContent = 'OVERHEAT'; acc.className = 'acc locked'; }
@@ -117,6 +126,7 @@ export class Hud {
     const tighten = me.overheat || me.reload > 0 ? 1 : (1 - me.acc / 100);
     this.el.reticle.style.setProperty('--rs', (0.7 + tighten * 0.7).toFixed(2));
     this.el.reticle.classList.toggle('armed', me.maxArmed);
+    this.el.reticle.dataset.w = me.weapon;        // per-weapon scope styling
 
     // enemy part markers: coordination, selected target, and the part the
     // reticle is currently over (lights up = will be hit)
@@ -169,5 +179,10 @@ export class Hud {
     this.el.weapon.classList.toggle('armed', me.weapon !== 'cannon');
     this.el.move.disabled = !(state.phase === 'battle' && state.moving <= 0 && me.reload <= 0 && c.canMove);
     this.el.moveLbl.textContent = state.nextRangeDir === 'in' ? '前進' : '後退';
+
+    // stance toggle: halted (steady aim, exposed) vs marching (drifty aim, evasive)
+    this.el.halt.disabled = state.phase !== 'battle';
+    this.el.haltLbl.textContent = me.halted ? '駐停' : '行進';
+    this.el.halt.classList.toggle('armed', me.halted);
   }
 }
