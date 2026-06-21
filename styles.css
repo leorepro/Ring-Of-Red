@@ -85,11 +85,45 @@ canvas#scene{position:fixed;inset:0;width:100%;height:100%;display:block;z-index
 .ret-h{left:-12%;right:-12%;top:50%;height:1px;transform:translateY(-.5px)}
 .ret-v{top:-12%;bottom:-12%;left:50%;width:1px;transform:translateX(-.5px)}
 .reticle.armed .ret-ring{border-color:#ff7a6a;box-shadow:0 0 12px rgba(230,90,60,.7)}
-.acc{position:absolute;bottom:8%;right:6%;font-family:var(--mono);font-weight:800;font-size:1.5rem;color:var(--amber);
-  text-shadow:0 0 10px rgba(0,0,0,.85)}
-.acc small{font-size:.8rem;opacity:.7}
-.acc.hi{color:#6fe0ff;text-shadow:0 0 12px rgba(80,200,255,.5)}
-.acc.locked{color:#5c6b63;font-size:1.1rem}
+/* big accuracy %, centred over the lower scope like the original (not in a
+   corner where a thumb covers it) */
+.acc{position:absolute;left:50%;top:64%;transform:translate(-50%,-50%);
+  font-family:var(--mono);font-weight:800;font-size:clamp(2rem,8vw,3.4rem);color:var(--amber);
+  text-shadow:0 0 14px rgba(0,0,0,.9);letter-spacing:.01em;pointer-events:none;white-space:nowrap}
+.acc small{font-size:.45em;opacity:.75}
+.acc.hi{color:#6fe0ff;text-shadow:0 0 16px rgba(80,200,255,.55)}
+.acc.locked{color:#9aa39d;font-size:clamp(1.1rem,4.4vw,1.7rem)}
+
+/* ---- fixed gunner-sight instrumentation (per the PS2 reference) ---- */
+.scope-bezel{position:absolute;inset:-4px;border-radius:50%;opacity:.5;
+  background:repeating-conic-gradient(rgba(230,181,58,.45) 0 0.5deg, transparent 0.5deg 5deg);
+  -webkit-mask:radial-gradient(closest-side, transparent calc(100% - 9px), #000 calc(100% - 9px));
+          mask:radial-gradient(closest-side, transparent calc(100% - 9px), #000 calc(100% - 9px))}
+.rangebox{position:absolute;left:50%;top:7%;transform:translateX(-50%);
+  display:flex;flex-direction:column;align-items:center;gap:4px;pointer-events:none}
+.range-top{font-family:var(--mono);font-weight:800;letter-spacing:.12em;font-size:.78rem;color:#dcebff;
+  background:rgba(10,16,24,.82);border:1px solid rgba(120,160,200,.5);border-radius:4px;padding:.12rem .9rem}
+.load-track{position:relative;width:128px;height:8px;background:rgba(10,12,14,.82);
+  border:1px solid var(--line);border-radius:3px;margin-top:8px}
+.load-marker{position:absolute;top:-7px;left:0;width:0;height:0;margin-left:-5px;
+  border-left:5px solid transparent;border-right:5px solid transparent;transition:left .1s linear}
+.load-marker.me{border-top:8px solid #5aa0e6}
+.load-marker.foe{border-top:8px solid #e05a5a}
+.scope-center{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
+  width:min(80vmin,540px);max-width:92vw;pointer-events:none}
+.elev{position:absolute;top:-26px;width:0;height:0;margin-left:-6px;
+  border-left:6px solid transparent;border-right:6px solid transparent}
+.elev-l{left:32%;border-top:10px solid #5aa0e6}
+.elev-r{left:68%;border-top:10px solid #e05a5a}
+.ruler-tris{display:flex;justify-content:center;gap:7px;line-height:1;margin-bottom:2px}
+.ruler-tris b{font-style:normal;font-size:.55rem;color:rgba(230,181,58,.8)}
+.ruler-tris b.c{color:#fff;transform:scale(1.2)}
+.ruler-line{height:12px;background:repeating-linear-gradient(90deg, rgba(230,181,58,.5) 0 1px, transparent 1px 16px);position:relative}
+.ruler-line::after{content:"";position:absolute;left:0;right:0;top:50%;height:1px;background:rgba(230,181,58,.55)}
+.ruler-nums{display:flex;justify-content:space-between;margin-top:2px;
+  font-family:var(--mono);font-size:.5rem;color:rgba(230,181,58,.7)}
+.ret-dot{position:absolute;left:50%;top:50%;width:3px;height:3px;border-radius:50%;
+  background:var(--amber);transform:translate(-50%,-50%)}
 
 /* our own AFW coordination */
 .self-parts{position:absolute;left:calc(.6rem + var(--safe-l));bottom:calc(5.6rem + var(--safe-b));

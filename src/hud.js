@@ -14,6 +14,7 @@ export class Hud {
       timer: $('timer'), range: $('range'), time: $('time'), land: $('land'),
       banner: $('banner'),
       tzone: $('tzone'), reticle: $('reticle'), acc: $('acc'),
+      rangeTop: $('range-top'), loadMe: $('load-me'), loadFoe: $('load-foe'),
       heat: $('heat'), charge: $('charge'), heatwarn: $('heatwarn'),
       squadMe: $('squad-me'), infMe: $('inf-me'), starMe: $('star-me'),
       selfParts: $('self-parts'),
@@ -72,6 +73,11 @@ export class Hud {
     this.el.range.textContent = env.range;
     this.el.time.textContent = env.night ? 'NIGHT' : 'DAY';
     this.el.land.textContent = 'LAND ' + env.land + '%';
+
+    // scope range box + blue(player)/red(enemy) loading markers
+    this.el.rangeTop.textContent = env.range;
+    this.el.loadMe.style.left = Math.max(0, Math.min(100, me.acc)) + '%';
+    this.el.loadFoe.style.left = (state.dodge > 0 ? 100 : Math.max(0, Math.min(100, foe.charge))) + '%';
 
     // accuracy readout (turns cyan at high accuracy, like the original)
     const acc = this.el.acc;

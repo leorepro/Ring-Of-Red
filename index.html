@@ -56,15 +56,37 @@
 
     <!-- gunner scope / targeting reticle over the enemy's body parts -->
     <div class="scope">
-      <div class="scope-ring" aria-hidden="true"></div>
+      <!-- fixed scope instrumentation (matches the PS2 gunner sight) -->
+      <div class="scope-ring" aria-hidden="true"><div class="scope-bezel"></div></div>
+
+      <div class="rangebox" aria-hidden="true">
+        <div id="range-top" class="range-top">SHORT</div>
+        <div class="load-track">
+          <i id="load-me" class="load-marker me"></i>
+          <i id="load-foe" class="load-marker foe"></i>
+        </div>
+      </div>
+
+      <div class="scope-center" aria-hidden="true">
+        <div class="elev elev-l"></div>
+        <div class="elev elev-r"></div>
+        <div class="ruler">
+          <div class="ruler-tris"><b>▲</b><b>▲</b><b>▲</b><b class="c">▲</b><b>▲</b><b>▲</b><b>▲</b></div>
+          <div class="ruler-line"></div>
+          <div class="ruler-nums"><span>40</span><span>30</span><span>20</span><span>10</span><span>0</span><span>10</span><span>20</span><span>30</span><span>40</span></div>
+        </div>
+      </div>
+
       <div id="tzone" class="tzone">
         <!-- enemy part markers (with coordination) injected by hud.js -->
         <div id="reticle" class="reticle" aria-hidden="true">
           <div class="ret-h"></div>
           <div class="ret-v"></div>
           <div class="ret-ring"></div>
+          <div class="ret-dot"></div>
         </div>
       </div>
+
       <div id="acc" class="acc" aria-hidden="true">--.--<small>%</small></div>
     </div>
 

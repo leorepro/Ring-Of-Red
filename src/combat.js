@@ -31,9 +31,9 @@ export const PART_CFG = {
 };
 
 const RANGE_CFG = {
-  SHORT:  { ceil: 98, ramp: 46, dmg: 96, sway: 0.5 },
-  MEDIUM: { ceil: 92, ramp: 36, dmg: 64, sway: 1.0 },
-  LONG:   { ceil: 82, ramp: 27, dmg: 44, sway: 1.7 },
+  SHORT:  { ceil: 98, ramp: 46, dmg: 40, sway: 0.5 },
+  MEDIUM: { ceil: 92, ramp: 36, dmg: 28, sway: 1.0 },
+  LONG:   { ceil: 82, ramp: 27, dmg: 20, sway: 1.7 },
 };
 
 const NIGHT_PENALTY = 10;
@@ -69,7 +69,7 @@ export function createState() {
     env: { range: 'MEDIUM', night, land },
     aim: { x: 0, y: 0.45 },        // current reticle position (over enemy)
     me: {
-      hp: 374, maxHp: 374,
+      hp: 300, maxHp: 300,
       acc: 0, heat: 0, overheat: false, reload: 0,
       infantry: 16, maxInf: 16, star: 3, pilot: 3,
       squad: mkSquad(SQUADS.me), parts: mkParts(),
@@ -77,7 +77,7 @@ export function createState() {
       targetPart: 'torso',         // which enemy part we're aiming at
     },
     foe: {
-      hp: 430, maxHp: 430,
+      hp: 200, maxHp: 200,
       acc: 0, charge: 0, reload: 0,
       infantry: 16, maxInf: 16, star: 2, pilot: 2,
       squad: mkSquad(SQUADS.foe), parts: mkParts(),
