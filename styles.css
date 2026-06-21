@@ -232,6 +232,19 @@ canvas#scene{position:fixed;inset:0;width:100%;height:100%;display:block;z-index
 
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.45}}
 
+/* cinematic slow-mo (killing blow): letterbox bars + label, faint desat */
+.cine{position:fixed;inset:0;z-index:33;pointer-events:none;opacity:0;transition:opacity .35s}
+.cine::before,.cine::after{content:"";position:absolute;left:0;right:0;height:11vh;background:#000;
+  transform:scaleY(0);transition:transform .35s ease}
+.cine::before{top:0;transform-origin:top}
+.cine::after{bottom:0;transform-origin:bottom}
+.cine span{position:absolute;bottom:calc(11vh + .6rem);left:50%;transform:translateX(-50%);
+  font-family:var(--mono);font-weight:800;letter-spacing:.3em;font-size:.9rem;color:var(--enemy);
+  text-shadow:0 0 12px rgba(192,68,58,.6);opacity:0;transition:opacity .35s .1s}
+.cine.show{opacity:1}
+.cine.show::before,.cine.show::after{transform:scaleY(1)}
+.cine.show span{opacity:.95}
+
 /* shorter screens (landscape phones): tuck gauges/squad in a bit */
 @media (orientation:landscape) and (max-height:430px){
   .gauges,.squad{top:40%}

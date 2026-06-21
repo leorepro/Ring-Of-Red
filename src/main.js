@@ -32,6 +32,7 @@ function startBattle() {
   state = createState();
   titleEl.classList.add('hidden');
   resultEl.classList.add('hidden');
+  document.getElementById('cine').classList.remove('show');
   hud.show();
   running = true;
 }
@@ -46,6 +47,7 @@ function finish() {
     ? '敵 AFW 已擊毀 — 你在板機與過熱之間賭贏了這一場。'
     : (state.me.hp <= 0 ? '本機被擊毀。下次更早收手去迴避那記高命中。' : '時間耗盡 — 以殘存戰力判定，未能壓制敵機。');
   document.getElementById('battle-result').innerHTML = battleResult(state);
+  document.getElementById('cine').classList.remove('show');
   resultEl.classList.remove('hidden');
 }
 
@@ -87,6 +89,10 @@ window.addEventListener('orientationchange', checkOrient);
 checkOrient();
 
 // ---- main loop ----
+const ENDING_DURATION = 5.0;   // bullet-time length for the killing blow (~5s)
+const SLOW = 0.22;             // world time scale during the slow-mo finish
+const cine = document.getElementById('cine');
+
 let last = performance.now();
 function frame(now) {
   let dt = (now - last) / 1000;
@@ -94,11 +100,23 @@ function frame(now) {
   dt = Math.min(dt, 0.05); // clamp after tab-switch / hitches
 
   if (running) {
-    update(state, dt);
-    hud.render(state);
-    if (state.phase !== 'battle') finish();
+    if (state.phase === 'battle') {
+      update(state, dt);
+      hud.render(state);
+      // 'ending' (a gun finisher, possibly set from input or enemy AI) is
+      // handled by the ending branch next frame; only immediate ends finish now
+      if (state.phase !== 'battle' && state.phase !== 'ending') finish();
+    } else if (state.phase === 'ending') {
+      // killing blow in bullet-time: letterbox on, freeze sim, let the
+      // finishing shell fly in slow motion, then resolve after ~5s wall-clock
+      cine.classList.add('show');
+      if (!state.endStart) state.endStart = now;
+      hud.render(state);
+      if (now - state.endStart >= ENDING_DURATION * 1000) { state.phase = state.endResult; finish(); }
+    }
   }
-  world.update(state, dt);
+  const worldDt = (running && state.phase === 'ending') ? dt * SLOW : dt;
+  world.update(state, worldDt);
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);

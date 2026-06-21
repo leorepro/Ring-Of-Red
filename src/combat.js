@@ -178,13 +178,15 @@ export function tryFire(state) {
   state.fx.push({ type: 'fire', side: 'me' });
   setBanner(state, maxShot ? '必殺・直擊射撃！' : 'PLAYER AFW — FIRE', 'me', maxShot ? 1.1 : 0.7);
 
+  let shotFx = null;
   if (me.shell === 'AP') {
     // anti-personnel: shred enemy infantry/squads, light vs armour
     const inf = Math.round(rand(5, 9) * (maxShot ? 1.8 : 1));
     state.foe.infantry = Math.max(0, state.foe.infantry - inf);
     state.foe.hp = Math.max(0, state.foe.hp - Math.round(RANGE_CFG[state.env.range].dmg * 0.25));
     if (Math.random() < 0.6) knockSquad(state.foe);
-    state.fx.push({ type: 'shot', side: 'me', part: 'torso', hit: true, shrapnel: true });
+    shotFx = { type: 'shot', side: 'me', part: 'torso', hit: true, shrapnel: true };
+    state.fx.push(shotFx);
     setBanner(state, `對人彈命中 — 敵步兵 −${inf}`, 'me', 1.0);
   } else {
     // anti-armour: locational hit decided by where the reticle is
@@ -192,7 +194,8 @@ export function tryFire(state) {
     if (part) {
       const base = RANGE_CFG[state.env.range].dmg * (0.85 + Math.random() * 0.3) * pas.afwDmg * (maxShot ? 1.7 : 1);
       const dmg = damagePart(state.foe, part, base, acc01, maxShot);
-      state.fx.push({ type: 'shot', side: 'me', part, hit: true });
+      shotFx = { type: 'shot', side: 'me', part, hit: true };
+      state.fx.push(shotFx);
       if (Math.random() < 0.25) knockSquad(state.foe);
       const co = Math.round(state.foe.parts[part].co);
       setBanner(state, `命中 ${PART_CFG[part].zh} −${dmg}（協調 ${co}%）`, 'me', 1.0);
@@ -201,7 +204,7 @@ export function tryFire(state) {
       setBanner(state, '失準 — 砲彈擦過', 'evade', 0.8);
     }
   }
-  if (state.foe.hp <= 0) endBattle(state, 'win');
+  if (state.foe.hp <= 0) { if (shotFx) shotFx.kill = true; finisher(state, 'win'); }
 
   me.acc = 0;
   me.reload = RELOAD_TIME * pas.reload * (cap.armsDown === 1 ? 1.4 : 1);
@@ -254,6 +257,16 @@ function knockSquad(unit) {
 }
 
 function endBattle(state, outcome) { state.phase = outcome; state.dodge = 0; }
+
+// The killing blow plays out in bullet-time: freeze the sim into an 'ending'
+// phase and let the finishing shell fly in slow motion before the result.
+function finisher(state, outcome) {
+  state.phase = 'ending';
+  state.endResult = outcome;
+  state.killLanded = false;
+  state.endStart = 0;          // set to wall-clock when the ending branch begins
+  state.dodge = 0;
+}
 
 // ---- main tick ----
 
@@ -401,14 +414,15 @@ function resolveEnemyShot(state) {
   state.flash.foe = 0.12;
   const hit = Math.random() * 100 < state.pendingFoeAcc;
   const part = enemyTargetPart();
-  state.fx.push({ type: 'shot', side: 'foe', part, hit });
+  const shotFx = { type: 'shot', side: 'foe', part, hit };
+  state.fx.push(shotFx);
   if (hit) {
     const base = RANGE_CFG[state.env.range].dmg * 1.08 * (0.8 + Math.random() * 0.4);
     const acc01 = state.pendingFoeAcc / 100;
     const dmg = damagePart(state.me, part, base, acc01, false);
     setBanner(state, `${PART_CFG[part].zh}被命中 −${dmg}`, 'hit', 1.0);
     if (Math.random() < 0.3) knockSquad(state.me);
-    if (state.me.hp <= 0) endBattle(state, 'lose');
+    if (state.me.hp <= 0) { shotFx.kill = true; finisher(state, 'lose'); }
   } else {
     setBanner(state, '對方失準 MISS', 'evade', 0.9);
   }

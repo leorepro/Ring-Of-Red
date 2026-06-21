@@ -8,7 +8,7 @@ import { rangeSway, PART_POS } from './combat.js';
 // engagement distances pulled far out — at this range a tiny aim wobble
 // walks the point of impact from the head down to the legs (sniper feel)
 const RANGE_DIST = { SHORT: 200, MEDIUM: 360, LONG: 520 };
-const ENEMY_SCALE = 1.6;               // small, distant figure (sniper feel)
+const ENEMY_SCALE = 0.48;              // tiny, distant figure (30% — long sniper range)
 const ENEMY_BASE_Y = -1.0;             // biped model is built with feet at y≈0
 
 // cold day vs night palettes
@@ -452,8 +452,11 @@ export class World {
           : this._enemyPartWorld('torso').add(new THREE.Vector3((rnd() < 0 ? -1 : 1) * (14 + Math.random() * 14), 6 + Math.random() * 10, 0));
         const col = e.shrapnel ? 0xffd27a : (e.hit ? 0xfff0b0 : 0xffcc66);
         this._projectile(from, target, col, (p) => {
-          if (e.hit) { this._explosion(p, e.shrapnel ? 30 : 60); this.kickVel.z += 1.5; this.trauma = Math.max(this.trauma, 0.3); }
-          else this._dirt(p);
+          if (e.hit) {
+            this._explosion(p, e.kill ? 150 : (e.shrapnel ? 30 : 60));
+            this.kickVel.z += 1.5; this.trauma = Math.max(this.trauma, e.kill ? 0.8 : 0.3);
+            if (e.kill) { this._explosion(p, 90); state.killLanded = true; }
+          } else this._dirt(p);
         });
       } else if (e.type === 'shot' && e.side === 'foe') {
         // enemy fires from its hand toward us; impact reaction on arrival
@@ -461,12 +464,13 @@ export class World {
         const aimAt = this.camera.position.clone().add(new THREE.Vector3(rnd() * 2, -1, 2));
         const target = e.hit ? aimAt : aimAt.add(new THREE.Vector3((rnd() < 0 ? -1 : 1) * 18, 6 + Math.random() * 8, 0));
         this._muzzleFlash(from, 0xffae5a);
-        this._projectile(from, target, e.hit ? 0xff8855 : 0xffcc66, () => {
+        this._projectile(from, target, e.hit ? 0xff8855 : 0xffcc66, (p) => {
           if (e.hit) {
             const d = Math.random() < 0.5 ? -1 : 1;
             this.kickVel.x += d * 10; this.kickVel.z += 6; this.kickVel.y += Math.abs(rnd()) * 5;
             this.kickRotVel.z += d * 1.7; this.kickRotVel.x += 0.9;
             this.trauma = 1; this.rumble = Math.max(this.rumble, 0.85); this._redFlash();
+            if (e.kill) { this._explosion(p, 120); state.killLanded = true; }
           } else { this.kickVel.x += (Math.random() < 0.5 ? -1 : 1) * 3; this.trauma = Math.max(this.trauma, 0.25); }
         });
       } else if (e.type === 'evade') {
