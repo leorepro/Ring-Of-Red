@@ -161,30 +161,9 @@ export class World {
     ground.receiveShadow = true;
     this.scene.add(ground);
 
-    // scattered low-poly debris / ruins spread across the long battlefield.
-    // Kept in a list so they can scroll toward the camera (forward-march cue).
+    // battlefield kept clear of props — only the enemy AFW stands on it
     this.debris = [];
-    const rockMat = new THREE.MeshStandardMaterial({ color: 0x4a4f47, flatShading: true, roughness: 1 });
-    const ruinMat = new THREE.MeshStandardMaterial({ color: 0x3c3a36, flatShading: true, roughness: 1 });
-    this._zNear = 30; this._zFar = -950;          // scroll wrap band
-    for (let i = 0; i < 190; i++) {
-      const x = (Math.random() - 0.5) * 760;
-      const z = this._zFar + Math.random() * (this._zNear - this._zFar);
-      let m;
-      if (Math.random() < 0.35) {
-        m = new THREE.Mesh(new THREE.BoxGeometry(2 + Math.random() * 7, 3 + Math.random() * 12, 2 + Math.random() * 5), ruinMat);
-        m.position.set(x, m.geometry.parameters.height / 2 - 1, z);
-        m.rotation.y = Math.random() * Math.PI;
-        m.rotation.z = (Math.random() - 0.5) * 0.22;
-      } else {
-        const s = 0.9 + Math.random() * 3.0;
-        m = new THREE.Mesh(new THREE.IcosahedronGeometry(s, 0), rockMat);
-        m.position.set(x, s * 0.5 - 0.6, z);
-        m.rotation.set(Math.random(), Math.random(), Math.random());
-      }
-      m.castShadow = true; m.receiveShadow = true;
-      this.debris.push(m); this.scene.add(m);
-    }
+    this._zNear = 30; this._zFar = -950;
   }
 
   // a bipedal AFW: head, torso, two arm-cannons (the "hands" that fire),
