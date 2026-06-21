@@ -272,6 +272,20 @@ export class World {
     // reflect locational damage: destroyed parts char and sag
     if (state.foe && state.foe.parts) this._reflectDamage(this._enemy, state.foe.parts);
 
+    // destroyed parts keep smoking / burning
+    this._smokeT = (this._smokeT || 0) + dt;
+    if (this._smokeT > 0.28 && state.foe && state.foe.parts) {
+      this._smokeT = 0;
+      const tmp = new THREE.Vector3();
+      for (const name in state.foe.parts) {
+        if (state.foe.parts[name].co <= 0) {
+          const wp = this._enemy.userData.parts[name].getWorldPosition(tmp).clone();
+          this._smoke(wp, 0x2a2622, 2.4, 6, 1.2);
+          if (Math.random() < 0.4) this._smoke(wp, 0xff7a2a, 1.3, 5, 0.5);
+        }
+      }
+    }
+
     // gunner aim micro-sway (shrinks as accuracy climbs)
     const sway = state.phase === 'battle' ? rangeSway(state) * 0.010 : 0.004;
     const sx = Math.sin(this.t * 1.7) * sway;
@@ -448,10 +462,11 @@ export class World {
         if (e.kill) this._trackKill(from, target);
         this._projectile(from, target, col, (p) => {
           if (e.hit) {
-            this._explosion(p, e.kill ? 150 : (e.shrapnel ? 30 : 60));
-            this.kickVel.z += 1.5; this.trauma = Math.max(this.trauma, e.kill ? 0.8 : 0.3);
-            if (e.kill) { this._explosion(p, 90); this._killActive = false; this._killImpact = p.clone(); state.killLanded = true; }
-          } else this._dirt(p);
+            if (e.shrapnel) { this._explosion(p, 34); this._sparks(p, 0xffd27a, 8, 18); }
+            else this._impactFx(e.part || 'torso', p, e.crit);
+            this.kickVel.z += 1.2; this.trauma = Math.max(this.trauma, e.crit ? 0.5 : 0.3);
+            if (e.kill) { this._explosion(p, 120); this._shockwave(p, 0xffffff, 32); this._killActive = false; this._killImpact = p.clone(); state.killLanded = true; }
+          } else this._dirtGeyser(p);
         }, e.kill ? (p) => this._killPos.copy(p) : null);
       } else if (e.type === 'shot' && e.side === 'foe') {
         // enemy fires from its hand toward us; impact reaction on arrival
@@ -466,6 +481,9 @@ export class World {
             this.kickVel.x += d * 10; this.kickVel.z += 6; this.kickVel.y += Math.abs(rnd()) * 5;
             this.kickRotVel.z += d * 1.7; this.kickRotVel.x += 0.9;
             this.trauma = 1; this.rumble = Math.max(this.rumble, 0.85); this._redFlash();
+            const hitAt = this.camera.position.clone().add(new THREE.Vector3(rnd() * 6, -2, -10));
+            this._sparks(hitAt, 0xffd27a, 14, 22); this._smoke(hitAt, 0x2a2622, 3, 7);
+            if (e.crit) { this._whiteFlash(); this._critText(); this._shockwave(hitAt, 0xffffff, 26); this.trauma = 1.2; }
             if (e.kill) { this._explosion(p, 120); this._killActive = false; this._killImpact = p.clone(); state.killLanded = true; }
           } else { this.kickVel.x += (Math.random() < 0.5 ? -1 : 1) * 3; this.trauma = Math.max(this.trauma, 0.25); }
         }, e.kill ? (p) => this._killPos.copy(p) : null);
@@ -540,17 +558,27 @@ export class World {
   }
 
   _muzzleFlash(pos, color) {
-    const light = new THREE.PointLight(color, 8, 40, 2);
+    // multi-layer muzzle blast: bright core + outer flame + flash light
+    const light = new THREE.PointLight(color, 11, 60, 2);
     light.position.copy(pos); this.scene.add(light);
-    const spr = new THREE.Mesh(
-      new THREE.SphereGeometry(2.2, 8, 8),
-      new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.95 }));
-    spr.position.copy(pos); this.scene.add(spr);
+    const core = new THREE.Mesh(new THREE.SphereGeometry(1.6, 8, 8),
+      new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 1, blending: THREE.AdditiveBlending, depthWrite: false }));
+    const flame = new THREE.Mesh(new THREE.SphereGeometry(3.0, 8, 8),
+      new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false }));
+    core.position.copy(pos); flame.position.copy(pos); this.scene.add(core, flame);
+    this._sparks(pos, 0xffd27a, 10, 26);              // ejected sparks
+    this._smoke(pos, 0x6b6256, 3.5, 5);               // muzzle smoke puff
     let life = 0.16;
     this.effects.push((dt) => {
       life -= dt; const k = Math.max(0, life / 0.16);
-      light.intensity = 8 * k; spr.material.opacity = k; spr.scale.setScalar(1 + (1 - k) * 1.6);
-      if (life <= 0) { this.scene.remove(light, spr); spr.geometry.dispose(); spr.material.dispose(); return false; }
+      light.intensity = 11 * k;
+      core.material.opacity = k; core.scale.setScalar(1 + (1 - k) * 1.2);
+      flame.material.opacity = k * 0.9; flame.scale.setScalar(1 + (1 - k) * 1.8);
+      if (life <= 0) {
+        this.scene.remove(light, core, flame);
+        core.geometry.dispose(); core.material.dispose(); flame.geometry.dispose(); flame.material.dispose();
+        return false;
+      }
       return true;
     });
   }
@@ -573,6 +601,140 @@ export class World {
       if (life <= 0) { this.scene.remove(m); m.material.dispose(); return false; }
       return true;
     });
+  }
+
+  // ---- VFX library ----------------------------------------------------
+
+  // bright sparks flying out with gravity
+  _sparks(pos, color, n = 12, speed = 22) {
+    const parts = [];
+    for (let i = 0; i < n; i++) {
+      const s = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.35, 0.35),
+        new THREE.MeshBasicMaterial({ color, blending: THREE.AdditiveBlending, transparent: true }));
+      s.position.copy(pos);
+      const v = new THREE.Vector3(Math.random() - 0.5, Math.random() * 0.9 + 0.1, Math.random() - 0.5)
+        .normalize().multiplyScalar(speed * (0.5 + Math.random()));
+      this.scene.add(s); parts.push({ s, v });
+    }
+    let life = 0.5;
+    this.effects.push((dt) => {
+      life -= dt; const k = Math.max(0, life / 0.5);
+      parts.forEach((p) => { p.v.y -= 42 * dt; p.s.position.addScaledVector(p.v, dt); p.s.material.opacity = k; });
+      if (life <= 0) { parts.forEach((p) => { this.scene.remove(p.s); p.s.geometry.dispose(); p.s.material.dispose(); }); return false; }
+      return true;
+    });
+  }
+
+  // soft expanding, rising smoke puff
+  _smoke(pos, color = 0x55504a, size = 4, rise = 6, dur = 1.1) {
+    const m = new THREE.Sprite(new THREE.SpriteMaterial({ map: this._glowTex, color, transparent: true, opacity: 0.55, depthWrite: false }));
+    m.position.copy(pos); m.scale.setScalar(size); this.scene.add(m);
+    let life = dur;
+    this.effects.push((dt) => {
+      life -= dt; const k = Math.max(0, life / dur);
+      m.material.opacity = k * 0.55; m.position.y += rise * dt; m.scale.setScalar(size * (1 + (1 - k) * 1.6));
+      if (life <= 0) { this.scene.remove(m); m.material.dispose(); return false; }
+      return true;
+    });
+  }
+
+  // chunks of blown-off armor with gravity + spin that settle on the ground
+  _debrisBurst(pos, color, n = 8, power = 16) {
+    const parts = [];
+    for (let i = 0; i < n; i++) {
+      const sz = 0.5 + Math.random() * 1.4;
+      const m = new THREE.Mesh(new THREE.BoxGeometry(sz, sz, sz),
+        new THREE.MeshStandardMaterial({ color, flatShading: true, roughness: 1 }));
+      m.position.copy(pos);
+      const v = new THREE.Vector3(Math.random() - 0.5, Math.random() * 0.8 + 0.4, Math.random() - 0.5)
+        .normalize().multiplyScalar(power * (0.5 + Math.random()));
+      const w = new THREE.Vector3(Math.random(), Math.random(), Math.random()).multiplyScalar(8);
+      this.scene.add(m); parts.push({ m, v, w });
+    }
+    let life = 1.4;
+    this.effects.push((dt) => {
+      life -= dt;
+      parts.forEach((p) => {
+        p.v.y -= 36 * dt; p.m.position.addScaledVector(p.v, dt);
+        if (p.m.position.y < 0) { p.m.position.y = 0; p.v.y *= -0.3; p.v.x *= 0.6; p.v.z *= 0.6; }
+        p.m.rotation.x += p.w.x * dt; p.m.rotation.y += p.w.y * dt;
+      });
+      if (life <= 0) { parts.forEach((p) => { this.scene.remove(p.m); p.m.geometry.dispose(); p.m.material.dispose(); }); return false; }
+      return true;
+    });
+  }
+
+  // expanding shockwave ring (faces the camera)
+  _shockwave(pos, color = 0xffffff, max = 26) {
+    const geo = new THREE.RingGeometry(0.6, 1.4, 32);
+    const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.85, side: THREE.DoubleSide, blending: THREE.AdditiveBlending, depthWrite: false }));
+    m.position.copy(pos); this.scene.add(m);
+    let life = 0.5;
+    this.effects.push((dt) => {
+      life -= dt; const k = Math.max(0, life / 0.5);
+      m.lookAt(this.camera.position);
+      m.scale.setScalar(1 + (1 - k) * max);
+      m.material.opacity = k * 0.85;
+      if (life <= 0) { this.scene.remove(m); geo.dispose(); m.material.dispose(); return false; }
+      return true;
+    });
+  }
+
+  // a tall dirt geyser where a missed shell strikes the ground
+  _dirtGeyser(pos) {
+    this._smoke(pos.clone().setY(Math.max(0, pos.y)), 0x6b6357, 5, 16, 1.0);
+    this._debrisBurst(pos.clone().setY(0.5), 0x5a5346, 6, 12);
+    this._sparks(pos, 0xa89878, 6, 12);
+  }
+
+  // location-specific impact effect for a hit on the enemy AFW
+  _impactFx(part, pos, crit) {
+    const SPARK = { head: 0x9fd8ff, torso: 0xffd27a, armL: 0xffae5a, armR: 0xffae5a, legL: 0xffe0a0, legR: 0xffe0a0 };
+    const color = SPARK[part] || 0xffd27a;
+    if (crit) { this._critFx(pos); return; }
+    this._explosion(pos, part === 'torso' ? 70 : 48);
+    this._sparks(pos, color, part === 'head' ? 18 : 12, part === 'head' ? 30 : 22);
+    if (part === 'torso') this._debrisBurst(pos, 0x6b5a3a, 9, 18);
+    else if (part === 'legL' || part === 'legR') { this._smoke(pos.clone().setY(0.5), 0x4a4036, 4, 5); this._debrisBurst(pos, 0x3a3f3a, 5, 14); }
+    else this._debrisBurst(pos, 0x3a3f3a, 5, 14);
+    this._smoke(pos, 0x2a2622, 3, 7);
+  }
+
+  // critical hit: big blast + shockwave + white flash + on-screen "CRITICAL"
+  _critFx(pos) {
+    this._explosion(pos, 150);
+    this._shockwave(pos, 0xffffff, 34);
+    this._sparks(pos, 0xfff0b0, 22, 34);
+    this._debrisBurst(pos, 0x6b5a3a, 12, 22);
+    this._smoke(pos, 0x201c18, 5, 9, 1.4);
+    this.trauma = Math.max(this.trauma, 0.9);
+    this._whiteFlash();
+    this._critText();
+  }
+
+  _whiteFlash() {
+    if (!this._white) {
+      this._white = document.createElement('div');
+      this._white.style.cssText = 'position:fixed;inset:0;z-index:26;pointer-events:none;background:rgba(255,255,255,.85);opacity:0;transition:opacity .12s';
+      document.body.appendChild(this._white);
+    }
+    this._white.style.opacity = '1';
+    setTimeout(() => { if (this._white) this._white.style.opacity = '0'; }, 70);
+  }
+
+  _critText() {
+    if (!this._crit) {
+      this._crit = document.createElement('div');
+      this._crit.textContent = 'CRITICAL ・ 爆擊';
+      this._crit.style.cssText = 'position:fixed;left:50%;top:38%;transform:translate(-50%,-50%) scale(.6);z-index:34;pointer-events:none;'
+        + 'font-family:ui-monospace,monospace;font-weight:800;letter-spacing:.14em;font-size:clamp(1.4rem,6vw,2.6rem);'
+        + 'color:#ff5a4a;text-shadow:0 0 16px rgba(255,80,60,.8),0 2px 6px #000;opacity:0;transition:opacity .12s,transform .18s';
+      document.body.appendChild(this._crit);
+    }
+    const el = this._crit;
+    el.style.opacity = '1'; el.style.transform = 'translate(-50%,-50%) scale(1.1)';
+    clearTimeout(this._critT);
+    this._critT = setTimeout(() => { el.style.opacity = '0'; el.style.transform = 'translate(-50%,-50%) scale(.6)'; }, 650);
   }
 
   _tracer(from, to, color, big = false) {

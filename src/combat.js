@@ -192,13 +192,14 @@ export function tryFire(state) {
     // anti-armour: locational hit decided by where the reticle is
     const part = maxShot ? me.targetPart : hitPart(state.aim);
     if (part) {
-      const base = RANGE_CFG[state.env.range].dmg * (0.85 + Math.random() * 0.3) * pas.afwDmg * (maxShot ? 1.7 : 1);
+      const crit = part === 'head' || maxShot || Math.random() < 0.1;
+      const base = RANGE_CFG[state.env.range].dmg * (0.85 + Math.random() * 0.3) * pas.afwDmg * (crit ? 1.6 : 1);
       const dmg = damagePart(state.foe, part, base, acc01, maxShot);
-      shotFx = { type: 'shot', side: 'me', part, hit: true };
+      shotFx = { type: 'shot', side: 'me', part, hit: true, crit };
       state.fx.push(shotFx);
       if (Math.random() < 0.25) knockSquad(state.foe);
       const co = Math.round(state.foe.parts[part].co);
-      setBanner(state, `命中 ${PART_CFG[part].zh} −${dmg}（協調 ${co}%）`, 'me', 1.0);
+      setBanner(state, `${crit ? '爆擊！' : '命中'} ${PART_CFG[part].zh} −${dmg}（協調 ${co}%）`, 'me', 1.0);
     } else {
       state.fx.push({ type: 'shot', side: 'me', part: null, hit: false });
       setBanner(state, '失準 — 砲彈擦過', 'evade', 0.8);
@@ -417,10 +418,12 @@ function resolveEnemyShot(state) {
   const shotFx = { type: 'shot', side: 'foe', part, hit };
   state.fx.push(shotFx);
   if (hit) {
-    const base = RANGE_CFG[state.env.range].dmg * 1.08 * (0.8 + Math.random() * 0.4);
+    const crit = part === 'head' || Math.random() < 0.07;
+    const base = RANGE_CFG[state.env.range].dmg * 1.08 * (0.8 + Math.random() * 0.4) * (crit ? 1.5 : 1);
     const acc01 = state.pendingFoeAcc / 100;
     const dmg = damagePart(state.me, part, base, acc01, false);
-    setBanner(state, `${PART_CFG[part].zh}被命中 −${dmg}`, 'hit', 1.0);
+    shotFx.crit = crit;
+    setBanner(state, `${crit ? '爆擊！' : ''}${PART_CFG[part].zh}被命中 −${dmg}`, 'hit', 1.0);
     if (Math.random() < 0.3) knockSquad(state.me);
     if (state.me.hp <= 0) { shotFx.kill = true; finisher(state, 'lose'); }
   } else {
