@@ -384,10 +384,10 @@ export class World {
     this.renderer.render(this.scene, this.camera);
   }
 
-  // Cinematic kill cam: cut between several angles over the ~5s slow-mo to
-  // show the finishing shell from multiple perspectives.
+  // Cinematic kill cam: cut between 5 angles over the ~10s slow-mo to show the
+  // finishing shell's whole trajectory and impact from multiple perspectives.
   _cineCam(dt, state) {
-    if (!this._endingPrev) { this._endingPrev = true; this._cineFov = 52; }
+    if (!this._endingPrev) { this._endingPrev = true; this._cineFov = 50; this._cineShot = -1; }
     const up = new THREE.Vector3(0, 1, 0);
     const S = this._killFrom ? this._killFrom.clone() : new THREE.Vector3(0, 8, 0);
     const E = this._killTo ? this._killTo.clone() : this._enemyPartWorld('torso');
@@ -396,29 +396,26 @@ export class World {
     const dir = E.clone().sub(S); const len = Math.max(1, dir.length()); dir.normalize();
     const side = new THREE.Vector3().crossVectors(dir, up).normalize();
     const t = state.endStart ? (performance.now() - state.endStart) / 1000 : 0;
+    const mid = (f) => S.clone().lerp(E, f);
 
-    let pos, look, fov = 50;
-    if (t < 1.7) {
-      // side tracking shot following the bolt down the trajectory
-      const mid = S.clone().lerp(E, 0.5);
-      pos = mid.add(side.clone().multiplyScalar(len * 0.16 + 24)).add(up.clone().multiplyScalar(14));
-      look = P; fov = 48;
-    } else if (t < 3.3) {
-      // reverse angle near the target: the shell streaking in
-      pos = E.clone().addScaledVector(dir, -34).addScaledVector(side, 24).addScaledVector(up, 14);
-      look = P.clone().lerp(E, 0.5); fov = 46;
-    } else {
-      // impact close-up, slow orbit around the strike point
-      const a = t * 0.9;
-      pos = E.clone()
-        .addScaledVector(side, Math.cos(a) * 18)
-        .addScaledVector(dir, Math.sin(a) * 18 - 6)
-        .addScaledVector(up, 9);
-      look = E; fov = 42;
+    let idx, pos, look, fov;
+    if (t < 2) {                 // 1: high wide establishing, following launch
+      idx = 0; pos = mid(0.35).addScaledVector(side, len * 0.12 + 30).addScaledVector(up, 42); look = P; fov = 52;
+    } else if (t < 4) {          // 2: low ground track, shell tearing past
+      idx = 1; pos = mid(0.5).addScaledVector(side, 18).addScaledVector(up, 3.5); look = P; fov = 42;
+    } else if (t < 6) {          // 3: opposite-side track
+      idx = 2; pos = mid(0.68).addScaledVector(side, -(len * 0.1 + 28)).addScaledVector(up, 16); look = P; fov = 46;
+    } else if (t < 8) {          // 4: reverse angle at the target, round streaking in
+      idx = 3; pos = E.clone().addScaledVector(dir, -34).addScaledVector(side, 22).addScaledVector(up, 14); look = P.clone().lerp(E, 0.6); fov = 44;
+    } else {                     // 5: impact close-up, slow orbit around the strike
+      idx = 4; const a = t * 0.8;
+      pos = E.clone().addScaledVector(side, Math.cos(a) * 16).addScaledVector(dir, Math.sin(a) * 16 - 4).addScaledVector(up, 9);
+      look = E; fov = 40;
     }
-    this.camera.position.lerp(pos, Math.min(1, dt * 8));
+    if (idx !== this._cineShot) { this._cineShot = idx; this.camera.position.copy(pos); }  // hard cut
+    else this.camera.position.lerp(pos, Math.min(1, dt * 6));                                // gentle follow
     this.camera.lookAt(look);
-    this._cineFov += (fov - this._cineFov) * Math.min(1, dt * 4);
+    this._cineFov += (fov - this._cineFov) * Math.min(1, dt * 5);
     this.camera.fov = this._cineFov;
     this.camera.updateProjectionMatrix();
   }

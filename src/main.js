@@ -91,8 +91,8 @@ window.addEventListener('orientationchange', checkOrient);
 checkOrient();
 
 // ---- main loop ----
-const ENDING_DURATION = 5.0;   // bullet-time length for the killing blow (~5s)
-const SLOW = 0.22;             // world time scale during the slow-mo finish
+const ENDING_DURATION = 10.0;  // bullet-time length for the killing blow (~10s)
+const SLOW = 0.14;             // world time scale during the slow-mo finish
 const cine = document.getElementById('cine');
 
 let last = performance.now();
