@@ -47,12 +47,13 @@ function finish() {
 document.getElementById('start').addEventListener('click', startBattle);
 document.getElementById('again').addEventListener('click', startBattle);
 
-// orientation hint (portrait on phones)
+// orientation hint — this game is designed for portrait, so nudge
+// phone players who are holding the device in landscape.
 const rotateEl = document.getElementById('rotate');
 function checkOrient() {
-  const portrait = window.innerHeight > window.innerWidth;
+  const landscape = window.innerWidth > window.innerHeight;
   const phone = Math.min(window.innerWidth, window.innerHeight) < 520;
-  rotateEl.classList.toggle('hidden', !(portrait && phone));
+  rotateEl.classList.toggle('hidden', !(landscape && phone));
 }
 window.addEventListener('resize', checkOrient);
 window.addEventListener('orientationchange', checkOrient);

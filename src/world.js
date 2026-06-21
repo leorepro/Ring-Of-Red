@@ -31,6 +31,8 @@ export class World {
     this.dist = RANGE_DIST.MEDIUM;
     this.targetDist = this.dist;
     this.shake = 0;
+    this.recoil = 0;        // upward kick of the gunner view on firing
+    this.barrelKick = 0;    // foreground barrel recoiling backward
     this.slide = new THREE.Vector3();
     this.effects = [];
     this.t = 0;
@@ -183,6 +185,8 @@ export class World {
     barrel.rotation.x = Math.PI / 2;
     barrel.position.set(1.7, -2.2, -5.5);
     this.rig.add(barrel);
+    this.myBarrel = barrel;
+    this.barrelBaseZ = barrel.position.z;
     this.myMuzzleLocal = new THREE.Vector3(1.7, -2.2, -12);
   }
 
@@ -225,19 +229,31 @@ export class World {
     const sx = Math.sin(this.t * 1.7) * sway + (Math.random() - 0.5) * sway * 0.4;
     const sy = Math.cos(this.t * 1.3) * sway * 0.7 + (Math.random() - 0.5) * sway * 0.4;
 
-    // shake + dodge slide
-    this.shake = Math.max(0, this.shake - dt * 4);
+    // shake + recoil + dodge slide (decay)
+    this.shake = Math.max(0, this.shake - dt * 6);
+    this.recoil = Math.max(0, this.recoil - dt * 7);
+    this.barrelKick = Math.max(0, this.barrelKick - dt * 6);
     this.slide.multiplyScalar(Math.max(0, 1 - dt * 5));
-    const sh = this.shake * 0.6;
+
+    // positional jolt (stronger now) + rotational rattle
+    const sh = this.shake * 1.6;
+    const rot = this.shake * 0.05;
+    const kick = this.recoil * 0.12;             // camera pitches up on firing
 
     this.camera.position.set(
       this.slide.x + (Math.random() - 0.5) * sh,
       7.6 + this.slide.y + (Math.random() - 0.5) * sh,
-      6 + this.slide.z,
+      6 + this.slide.z + this.recoil * 0.6,        // shoves back a touch
     );
-    this.camera.rotation.set(sy - 0.04, sx, this.slide.x * 0.01);
+    this.camera.rotation.set(
+      sy - 0.04 + kick + (Math.random() - 0.5) * rot,
+      sx + (Math.random() - 0.5) * rot,
+      this.slide.x * 0.01 + (Math.random() - 0.5) * rot * 0.6,
+    );
     this.rig.position.copy(this.camera.position);
     this.rig.rotation.copy(this.camera.rotation);
+    // foreground barrel slams backward then settles
+    if (this.myBarrel) this.myBarrel.position.z = this.barrelBaseZ + this.barrelKick * 2.2;
 
     this._consumeFx(state);
     this._updateEffects(dt);
@@ -250,14 +266,18 @@ export class World {
     for (const e of state.fx) {
       if (e.type === 'fire' && e.side === 'me') {
         this._muzzleFlash(this._myMuzzleWorld(), 0xffd27a);
+        // firing recoil — heavy artillery kick
+        this.shake = Math.max(this.shake, 2.6);
+        this.recoil = Math.max(this.recoil, 1);
+        this.barrelKick = 1;
       } else if (e.type === 'fire' && e.side === 'foe') {
         this._muzzleFlash(this._foeMuzzleWorld(), 0xffae5a);
         this._tracer(this._foeMuzzleWorld(), this.camera.position.clone().add(new THREE.Vector3(0, -1, 2)), 0xff8855);
       } else if (e.type === 'impact' && e.side === 'foe') {
         this._explosion(this._enemy.position.clone().setY(5), e.dmg);
-        this.shake = Math.max(this.shake, 1.2);
+        this.shake = Math.max(this.shake, 1.8);
       } else if (e.type === 'impact' && e.side === 'me') {
-        this.shake = Math.max(this.shake, 2.0);
+        this.shake = Math.max(this.shake, 3.4);
         this._redFlash();
       } else if (e.type === 'miss' && e.side === 'foe') {
         this._tracer(this._myMuzzleWorld(), this._enemy.position.clone().add(new THREE.Vector3(8, 6, 4)), 0xffcc66);
@@ -373,7 +393,11 @@ export class World {
   resize() {
     const w = window.innerWidth, h = window.innerHeight;
     this.renderer.setSize(w, h, false);
-    this.camera.aspect = w / h;
+    const aspect = w / h;
+    this.camera.aspect = aspect;
+    // Portrait: widen the vertical FOV so the enemy AFW and our barrel
+    // both stay framed on a tall, narrow screen.
+    this.camera.fov = aspect < 1 ? Math.min(74, 46 / Math.max(aspect, 0.45)) : 46;
     this.camera.updateProjectionMatrix();
   }
 }
