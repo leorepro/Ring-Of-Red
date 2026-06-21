@@ -25,8 +25,9 @@ export function bindControls(actions) {
       case ' ': case 'j': case 'x': e.preventDefault(); actions.fire(); break;
       case 'l': case 'shift': actions.dodge(); break;
       case 'm': actions.move(); break;
-      case 'k': case 't': actions.skill(); break;
+      case 'k': actions.skill(); break;
       case 'c': actions.shell(); break;
+      case 'r': case 't': actions.target(); break;
     }
   });
 

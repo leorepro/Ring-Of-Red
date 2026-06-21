@@ -54,16 +54,22 @@
     <!-- duel banner -->
     <div id="banner" class="banner"></div>
 
-    <!-- gunner scope / reticle -->
-    <div class="scope" aria-hidden="true">
-      <div id="reticle" class="reticle">
-        <div class="ret-h"></div>
-        <div class="ret-v"></div>
-        <div class="ret-ring"></div>
-        <div class="ret-ruler"></div>
+    <!-- gunner scope / targeting reticle over the enemy's body parts -->
+    <div class="scope">
+      <div class="scope-ring" aria-hidden="true"></div>
+      <div id="tzone" class="tzone">
+        <!-- enemy part markers (with coordination) injected by hud.js -->
+        <div id="reticle" class="reticle" aria-hidden="true">
+          <div class="ret-h"></div>
+          <div class="ret-v"></div>
+          <div class="ret-ring"></div>
+        </div>
       </div>
-      <div id="acc" class="acc">--.--<small>%</small></div>
+      <div id="acc" class="acc" aria-hidden="true">--.--<small>%</small></div>
     </div>
+
+    <!-- our own AFW part coordination -->
+    <div class="self-parts" id="self-parts"></div>
 
     <!-- heat + enemy charge gauges -->
     <div class="gauges">
@@ -195,6 +201,7 @@
   <div id="result" class="overlay hidden">
     <div id="result-title" class="result-title">MISSION COMPLETE</div>
     <p id="result-sub" class="sub"></p>
+    <div id="battle-result" class="battle-result"></div>
     <button id="again" class="btn fire big">再戰 RETRY</button>
   </div>
 

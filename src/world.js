@@ -5,10 +5,11 @@
 import * as THREE from 'three';
 import { rangeSway } from './combat.js';
 
-// engagement distances pulled way out for a long-range artillery feel
-const RANGE_DIST = { SHORT: 120, MEDIUM: 210, LONG: 330 };
-const ENEMY_SCALE = 3;                 // enlarge the far AFW so it stays readable
-const ENEMY_BASE_Y = 2.2 * ENEMY_SCALE - 1.6;
+// engagement distances pulled far out — at this range a tiny aim wobble
+// walks the point of impact from the head down to the legs (sniper feel)
+const RANGE_DIST = { SHORT: 200, MEDIUM: 360, LONG: 520 };
+const ENEMY_SCALE = 3;
+const ENEMY_BASE_Y = -1.0;             // biped model is built with feet at y≈0
 
 // cold day vs night palettes
 const DAY = {
@@ -165,9 +166,9 @@ export class World {
     this.debris = [];
     const rockMat = new THREE.MeshStandardMaterial({ color: 0x4a4f47, flatShading: true, roughness: 1 });
     const ruinMat = new THREE.MeshStandardMaterial({ color: 0x3c3a36, flatShading: true, roughness: 1 });
-    this._zNear = 30; this._zFar = -560;          // scroll wrap band
-    for (let i = 0; i < 150; i++) {
-      const x = (Math.random() - 0.5) * 520;
+    this._zNear = 30; this._zFar = -950;          // scroll wrap band
+    for (let i = 0; i < 190; i++) {
+      const x = (Math.random() - 0.5) * 760;
       const z = this._zFar + Math.random() * (this._zNear - this._zFar);
       let m;
       if (Math.random() < 0.35) {
@@ -186,70 +187,60 @@ export class World {
     }
   }
 
-  // a walking-tank AFW
+  // a bipedal AFW: head, torso, two arm-cannons (the "hands" that fire),
+  // and two walking legs. Parts are kept in userData for locational damage.
   _buildAFW({ enemy }) {
     const g = new THREE.Group();
-    const body = enemy ? 0x6b4a3a : 0x55603f;       // foe rusty / me olive
+    const body = enemy ? 0x6b5a3a : 0x55603f;
     const accent = enemy ? 0xc0443a : 0x8a9a5b;
     const steel = 0x3a3f3a;
-    const mat = (c) => new THREE.MeshStandardMaterial({ color: c, flatShading: true, roughness: 0.85, metalness: 0.25 });
+    const mat = (c) => new THREE.MeshStandardMaterial({ color: c, flatShading: true, roughness: 0.85, metalness: 0.28 });
 
-    const hull = new THREE.Mesh(new THREE.BoxGeometry(6.4, 2.4, 8.2), mat(body));
-    hull.position.y = 4.2; hull.castShadow = true;
-    g.add(hull);
+    // pelvis
+    const pelvis = new THREE.Mesh(new THREE.BoxGeometry(3.6, 2.0, 2.8), mat(steel));
+    pelvis.position.y = 6.0; pelvis.castShadow = true; g.add(pelvis);
 
-    // sloped front glacis
-    const glacis = new THREE.Mesh(new THREE.BoxGeometry(6.2, 2.0, 2.4), mat(steel));
-    glacis.position.set(0, 4.0, -4.4); glacis.rotation.x = -0.5; glacis.castShadow = true;
-    g.add(glacis);
+    // torso
+    const torso = new THREE.Group(); torso.position.y = 9.2;
+    const chest = new THREE.Mesh(new THREE.BoxGeometry(4.8, 4.8, 3.2), mat(body)); chest.castShadow = true;
+    const plate = new THREE.Mesh(new THREE.BoxGeometry(2.2, 1.5, 0.2), mat(accent)); plate.position.set(0, 0.4, 1.7);
+    torso.add(chest, plate); g.add(torso);
 
-    const turret = new THREE.Mesh(new THREE.CylinderGeometry(2.4, 2.9, 2.0, 8), mat(body));
-    turret.position.set(0, 5.9, 0.4); turret.castShadow = true;
-    g.add(turret);
+    // head
+    const head = new THREE.Group(); head.position.y = 12.4;
+    const skull = new THREE.Mesh(new THREE.BoxGeometry(1.9, 1.6, 1.9), mat(body)); skull.castShadow = true;
+    const visor = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.4, 0.2), mat(0x20242a)); visor.position.set(0, 0.1, 1.0);
+    head.add(skull, visor); g.add(head);
 
-    // unit insignia plate
-    const plate = new THREE.Mesh(new THREE.BoxGeometry(2.0, 1.3, 0.12), mat(accent));
-    plate.position.set(0, 5.9, 2.7);
-    g.add(plate);
+    // arm cannons — the AFW fires from its hands
+    const buildArm = (side) => {           // side: -1 / +1
+      const arm = new THREE.Group(); arm.position.set(side * 3.2, 10.6, 0);
+      const shoulder = new THREE.Mesh(new THREE.BoxGeometry(1.8, 1.9, 1.9), mat(steel)); shoulder.castShadow = true;
+      const cannon = new THREE.Mesh(new THREE.CylinderGeometry(0.7, 0.9, 7.2, 10), mat(steel));
+      cannon.rotation.x = Math.PI / 2; cannon.position.set(0, -0.2, -3.6); cannon.castShadow = true;
+      const muzzle = new THREE.Mesh(new THREE.CylinderGeometry(1.0, 1.0, 0.8, 10), mat(0x222));
+      muzzle.rotation.x = Math.PI / 2; muzzle.position.set(0, -0.2, -7.2);
+      const tip = new THREE.Object3D(); tip.position.set(0, -0.2, -7.7); arm.userData.tip = tip;
+      arm.add(shoulder, cannon, muzzle, tip);
+      return arm;
+    };
+    const armL = buildArm(-1), armR = buildArm(1); g.add(armL, armR);
 
-    // main barrel
-    const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.5, 7.6, 10), mat(steel));
-    barrel.rotation.x = Math.PI / 2;
-    barrel.position.set(0, 6.0, -3.6); barrel.castShadow = true;
-    g.add(barrel);
-    const muzzle = new THREE.Mesh(new THREE.CylinderGeometry(0.58, 0.58, 0.7, 10), mat(0x222));
-    muzzle.rotation.x = Math.PI / 2; muzzle.position.set(0, 6.0, -7.2);
-    g.add(muzzle);
-    g.userData.muzzleLocal = new THREE.Vector3(0, 6.0, -7.6);
+    // walking legs (two)
+    const buildLeg = (side) => {
+      const leg = new THREE.Group(); leg.position.set(side * 1.5, 6.0, 0);
+      const thigh = new THREE.Mesh(new THREE.BoxGeometry(1.6, 3.4, 1.6), mat(body)); thigh.position.y = -1.6; thigh.castShadow = true;
+      const knee = new THREE.Group(); knee.position.y = -3.2;
+      const shin = new THREE.Mesh(new THREE.BoxGeometry(1.3, 3.4, 1.3), mat(steel)); shin.position.y = -1.6; shin.castShadow = true;
+      const foot = new THREE.Mesh(new THREE.BoxGeometry(1.9, 0.7, 3.0), mat(steel)); foot.position.set(0, -3.2, 0.4);
+      knee.add(shin, foot); leg.add(thigh, knee); leg.userData.knee = knee;
+      return leg;
+    };
+    const legL = buildLeg(-1), legR = buildLeg(1); g.add(legL, legR);
 
-    // walking legs
-    const legMat = mat(steel);
-    g.userData.legs = [];
-    const legX = 3.6, legZ = 2.8;
-    [[-legX, legZ], [legX, legZ], [-legX, -legZ], [legX, -legZ]].forEach(([x, z], i) => {
-      const leg = new THREE.Group();
-      leg.position.set(x, 3.4, z);
-      const thigh = new THREE.Mesh(new THREE.BoxGeometry(0.9, 3.0, 0.9), legMat);
-      thigh.position.y = -1.3; thigh.castShadow = true;
-      const knee = new THREE.Group(); knee.position.y = -2.7;
-      const shin = new THREE.Mesh(new THREE.BoxGeometry(0.75, 3.0, 0.75), legMat);
-      shin.position.y = -1.4; shin.castShadow = true;
-      const foot = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.5, 2.2), legMat);
-      foot.position.y = -2.9;
-      knee.add(shin, foot); leg.add(thigh, knee);
-      leg.userData = { knee, phase: i * Math.PI / 2 };
-      g.add(leg);
-      g.userData.legs.push(leg);
-    });
-
-    // a few riding soldiers (boxes) on the hull back
-    for (let i = 0; i < 4; i++) {
-      const s = new THREE.Mesh(new THREE.BoxGeometry(0.7, 1.5, 0.7), mat(0x2f352c));
-      s.position.set(-2.2 + i * 1.45, 5.6, 2.0); s.castShadow = true;
-      g.add(s);
-    }
-
-    g.rotation.y = enemy ? Math.PI : 0; // enemy faces the camera
+    g.userData.parts = { head, torso, armL, armR, legL, legR };
+    g.userData.legs = [{ grp: legL, phase: 0 }, { grp: legR, phase: Math.PI }];
+    g.rotation.y = enemy ? Math.PI : 0;    // enemy faces the camera
     return g;
   }
 
@@ -273,8 +264,8 @@ export class World {
     this.lastNight = night;
     const p = night ? NIGHT : DAY;
     this.scene.fog.color.setHex(p.fog);
-    this.scene.fog.near = night ? 60 : 90;
-    this.scene.fog.far = night ? 440 : 580;
+    this.scene.fog.near = night ? 90 : 130;
+    this.scene.fog.far = night ? 760 : 980;
     this.scene.background.setHex(p.sky);
     this.groundMat.color.setHex(p.ground);
     this.hemi.color.setHex(p.hemiSky); this.hemi.groundColor.setHex(p.hemiGround);
@@ -309,7 +300,7 @@ export class World {
         m.position.z += scroll;
         if (m.position.z > this._zNear) {
           m.position.z = this._zFar;
-          m.position.x = (Math.random() - 0.5) * 520;
+          m.position.x = (Math.random() - 0.5) * 760;
         }
       }
     }
@@ -319,16 +310,18 @@ export class World {
     this.dist += (this.targetDist - this.dist) * Math.min(1, dt * 2.2);
     this._enemy.position.set(0, ENEMY_BASE_Y, -this.dist);
 
-    // walking gait — the enemy AFW is always striding forward, faster when
-    // the engagement range is closing/opening
-    const gait = marching ? 9 : 4.2;
-    const amp = marching ? 0.55 : 0.32;
+    // walking gait — the two legs stride in alternation, always marching
+    const gait = marching ? 8 : 3.6;
+    const amp = marching ? 0.6 : 0.34;
     this._enemy.userData.legs.forEach((leg) => {
-      const a = Math.sin(this.t * gait + leg.userData.phase) * amp;
-      leg.rotation.x = a;
-      leg.userData.knee.rotation.x = Math.max(0, -a) * 1.3;
+      const a = Math.sin(this.t * gait + leg.phase) * amp;
+      leg.grp.rotation.x = a;
+      leg.grp.userData.knee.rotation.x = Math.max(0, -a) * 1.4;
     });
-    this._enemy.position.y += Math.sin(this.t * gait * 2) * amp * 0.4;
+    this._enemy.position.y += Math.abs(Math.sin(this.t * gait)) * amp * 0.5;
+
+    // reflect locational damage: destroyed parts char and sag
+    if (state.foe && state.foe.parts) this._reflectDamage(this._enemy, state.foe.parts);
 
     // gunner aim micro-sway (shrinks as accuracy climbs)
     const sway = state.phase === 'battle' ? rangeSway(state) * 0.010 : 0.004;
@@ -388,6 +381,15 @@ export class World {
         + Math.sin(T * 70) * 0.09 * rb;
     }
 
+    // ---- scope zoom: tighten FOV as accuracy passes ~55% (sniper zoom-in) ----
+    const acc = state.phase === 'battle' ? state.me.acc : 0;
+    const zoom = Math.max(0, Math.min(1, (acc - 55) / 38));   // 55%→95%
+    const targetFov = this._baseFov * (1 - 0.42 * zoom);
+    if (Math.abs(this.camera.fov - targetFov) > 0.05) {
+      this.camera.fov += (targetFov - this.camera.fov) * Math.min(1, dt * 5);
+      this.camera.updateProjectionMatrix();
+    }
+
     this._consumeFx(state);
     this._updateEffects(dt);
     this.renderer.render(this.scene, this.camera);
@@ -414,50 +416,43 @@ export class World {
     const rnd = () => Math.random() - 0.5;
     for (const e of state.fx) {
       if (e.type === 'fire' && e.side === 'me') {
+        // our hand-cannon recoil: muzzle flash + heavy kick + after-shudder
         this._muzzleFlash(this._myMuzzleWorld(), 0xffd27a);
-        // heavy artillery recoil: pitch up, heave, and shove the whole hull back
-        this.kickRotVel.x += 1.0;                       // muzzle climbs
-        this.kickRotVel.z += rnd() * 0.5;               // slight twist
-        this.kickVel.y += 2.6;
-        this.kickVel.z += 7.5;                          // recoils backward
+        this.kickRotVel.x += 1.0; this.kickRotVel.z += rnd() * 0.5;
+        this.kickVel.y += 2.6; this.kickVel.z += 7.5;
         this.trauma = Math.max(this.trauma, 0.7);
-        this.rumble = 1;                                // sustained after-shudder
-        this.barrelKick = 1;
-      } else if (e.type === 'fire' && e.side === 'foe') {
-        this._muzzleFlash(this._foeMuzzleWorld(), 0xffae5a);
-        this._tracer(this._foeMuzzleWorld(), this.camera.position.clone().add(new THREE.Vector3(0, -1, 2)), 0xff8855);
-      } else if (e.type === 'impact' && e.side === 'foe') {
-        this._explosion(this._enemy.position.clone().add(new THREE.Vector3(0, 4.2 * ENEMY_SCALE, 0)), e.dmg);
-        // our hit lands downrange — modest feedback through the hull
-        this.kickVel.z += 2;
-        this.kickRotVel.x += 0.3;
-        this.trauma = Math.max(this.trauma, 0.35);
-      } else if (e.type === 'impact' && e.side === 'me') {
-        // taking a shell: a violent, heavy lurch sideways + roll
-        const d = Math.random() < 0.5 ? -1 : 1;
-        this.kickVel.x += d * 10;
-        this.kickVel.z += 6;
-        this.kickVel.y += Math.abs(rnd()) * 5;
-        this.kickRotVel.z += d * 1.7;                   // hull rolls from the blow
-        this.kickRotVel.x += 0.9;
-        this.trauma = 1;
-        this.rumble = Math.max(this.rumble, 0.85);      // shell blast shudder
-        this._redFlash();
-      } else if (e.type === 'miss' && e.side === 'foe') {
-        this._tracer(this._myMuzzleWorld(), this._enemy.position.clone().add(new THREE.Vector3(14, 4.2 * ENEMY_SCALE + 6, 4)), 0xffcc66);
-      } else if (e.type === 'miss' && e.side === 'me') {
-        this._dirt(this.camera.position.clone().add(new THREE.Vector3(6, -2, -8)));
+        this.rumble = 1; this.barrelKick = 1;
+      } else if (e.type === 'shot' && e.side === 'me') {
+        // shell flies from our hand to the targeted enemy part (or wide on a miss)
+        const from = this._myMuzzleWorld();
+        const target = e.hit && e.part
+          ? this._enemyPartWorld(e.part)
+          : this._enemyPartWorld('torso').add(new THREE.Vector3((rnd() < 0 ? -1 : 1) * (14 + Math.random() * 14), 6 + Math.random() * 10, 0));
+        const col = e.shrapnel ? 0xffd27a : (e.hit ? 0xfff0b0 : 0xffcc66);
+        this._projectile(from, target, col, (p) => {
+          if (e.hit) { this._explosion(p, e.shrapnel ? 30 : 60); this.kickVel.z += 1.5; this.trauma = Math.max(this.trauma, 0.3); }
+          else this._dirt(p);
+        });
+      } else if (e.type === 'shot' && e.side === 'foe') {
+        // enemy fires from its hand toward us; impact reaction on arrival
+        const from = this._foeMuzzleWorld();
+        const aimAt = this.camera.position.clone().add(new THREE.Vector3(rnd() * 2, -1, 2));
+        const target = e.hit ? aimAt : aimAt.add(new THREE.Vector3((rnd() < 0 ? -1 : 1) * 18, 6 + Math.random() * 8, 0));
+        this._muzzleFlash(from, 0xffae5a);
+        this._projectile(from, target, e.hit ? 0xff8855 : 0xffcc66, () => {
+          if (e.hit) {
+            const d = Math.random() < 0.5 ? -1 : 1;
+            this.kickVel.x += d * 10; this.kickVel.z += 6; this.kickVel.y += Math.abs(rnd()) * 5;
+            this.kickRotVel.z += d * 1.7; this.kickRotVel.x += 0.9;
+            this.trauma = 1; this.rumble = Math.max(this.rumble, 0.85); this._redFlash();
+          } else { this.kickVel.x += (Math.random() < 0.5 ? -1 : 1) * 3; this.trauma = Math.max(this.trauma, 0.25); }
+        });
       } else if (e.type === 'evade') {
-        // a hard, weighty juke to the side to slip the incoming shell
         const d = Math.random() < 0.5 ? -1 : 1;
-        this.kickVel.x += d * 12;
-        this.kickRotVel.z += d * 1.5;
+        this.kickVel.x += d * 12; this.kickRotVel.z += d * 1.5;
         this.trauma = Math.max(this.trauma, 0.5);
       } else if (e.type === 'inffire') {
         this._infFlicker(e.side);
-      }
-      if (e.type === 'fire' && e.side === 'me') {
-        this._tracer(this._myMuzzleWorld(), this._enemy.position.clone().add(new THREE.Vector3(0, 4.2 * ENEMY_SCALE, 0)), e.hit ? 0xfff0b0 : 0xffcc66, e.hit);
       }
     }
     state.fx.length = 0;
@@ -465,9 +460,54 @@ export class World {
 
   _myMuzzleWorld() { return this.myMuzzleLocal.clone().applyMatrix4(this.rig.matrixWorld); }
   _foeMuzzleWorld() {
-    return this._enemy.userData.muzzleLocal.clone()
-      .multiplyScalar(ENEMY_SCALE)
-      .applyEuler(this._enemy.rotation).add(this._enemy.position);
+    const arm = this._enemy.userData.parts.armR;
+    return arm.userData.tip.getWorldPosition(new THREE.Vector3());
+  }
+  _enemyPartWorld(part) {
+    const node = this._enemy.userData.parts[part] || this._enemy.userData.parts.torso;
+    return node.getWorldPosition(new THREE.Vector3());
+  }
+
+  // char + sag destroyed parts (applied once when a part's coordination hits 0)
+  _reflectDamage(mech, parts) {
+    const P = mech.userData.parts;
+    for (const name in parts) {
+      const broken = parts[name].co <= 0;
+      const node = P[name];
+      if (!node || node.userData.broken === broken) continue;
+      node.userData.broken = broken;
+      if (broken) {
+        node.traverse((o) => { if (o.material) o.material.color.setHex(0x241f1b); });
+        if (name === 'armL') node.rotation.z = 0.6;
+        else if (name === 'armR') node.rotation.z = -0.6;
+        else if (name === 'legL' || name === 'legR') node.rotation.x = 0.5;
+        else if (name === 'head') node.rotation.z = 0.5;
+      }
+    }
+  }
+
+  // a shell that visibly flies from -> to, then triggers onArrive at impact
+  _projectile(from, to, color, onArrive) {
+    const dir = to.clone().sub(from);
+    const dist = dir.length(); dir.normalize();
+    const dur = Math.max(0.08, Math.min(1.3, dist / 430));
+    const bolt = new THREE.Mesh(new THREE.SphereGeometry(2.0, 8, 8),
+      new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.95, blending: THREE.AdditiveBlending, depthWrite: false }));
+    const light = new THREE.PointLight(color, 3, 70, 2);
+    bolt.position.copy(from); light.position.copy(from);
+    this.scene.add(bolt, light);
+    let t = 0;
+    this.effects.push((dt) => {
+      t += dt; const k = Math.min(1, t / dur);
+      const p = from.clone().addScaledVector(dir, dist * k);
+      bolt.position.copy(p); light.position.copy(p);
+      if (k >= 1) {
+        this.scene.remove(bolt, light); bolt.geometry.dispose(); bolt.material.dispose();
+        if (onArrive) onArrive(p);
+        return false;
+      }
+      return true;
+    });
   }
 
   _muzzleFlash(pos, color) {
@@ -585,9 +625,10 @@ export class World {
     this.renderer.setSize(w, h, false);
     const aspect = w / h;
     this.camera.aspect = aspect;
-    // Portrait: widen the vertical FOV so the enemy AFW and our barrel
-    // both stay framed on a tall, narrow screen.
-    this.camera.fov = aspect < 1 ? Math.min(74, 46 / Math.max(aspect, 0.45)) : 46;
+    // Portrait: widen the base vertical FOV so the framing holds on a tall
+    // screen. The per-frame accuracy zoom narrows from this base.
+    this._baseFov = aspect < 1 ? Math.min(74, 46 / Math.max(aspect, 0.45)) : 46;
+    this.camera.fov = this._baseFov;
     this.camera.updateProjectionMatrix();
   }
 }

@@ -5,7 +5,7 @@
 import { World } from './world.js';
 import { Hud } from './hud.js';
 import { bindControls } from './input.js';
-import { createState, update, tryFire, tryDodge, tryMove, trySkill, tryShell } from './combat.js';
+import { createState, update, tryFire, tryDodge, tryMove, trySkill, tryShell, setTarget, cycleTarget, PARTS, PART_CFG } from './combat.js';
 
 const world = new World(document.getElementById('scene'));
 const hud = new Hud();
@@ -13,12 +13,15 @@ const hud = new Hud();
 let state = createState();
 let running = false;
 
+hud.onTarget = (part) => { if (running) setTarget(state, part); };
+
 bindControls({
   fire: () => running && tryFire(state),
   dodge: () => running && tryDodge(state),
   move: () => running && tryMove(state),
   skill: () => running && trySkill(state),
   shell: () => running && tryShell(state),
+  target: () => running && cycleTarget(state),
 });
 
 // ---- screen flow ----
@@ -42,7 +45,30 @@ function finish() {
   document.getElementById('result-sub').textContent = win
     ? '敵 AFW 已擊毀 — 你在板機與過熱之間賭贏了這一場。'
     : (state.me.hp <= 0 ? '本機被擊毀。下次更早收手去迴避那記高命中。' : '時間耗盡 — 以殘存戰力判定，未能壓制敵機。');
+  document.getElementById('battle-result').innerHTML = battleResult(state);
   resultEl.classList.remove('hidden');
+}
+
+// Battle Result — wear ratios + final per-part damage status for both AFWs
+function battleResult(state) {
+  const partStatus = (co) => co <= 0 ? '<b class="st-dead">Destroyed</b>'
+    : co < 50 ? '<b class="st-dmg">Damaged</b>' : '<b class="st-ok">Normal</b>';
+  const side = (u, name) => {
+    const hp = `${Math.ceil(u.hp)}/${u.maxHp}`;
+    const wreck = Math.round((1 - u.hp / u.maxHp) * 100);
+    const rows = PARTS.map((p) =>
+      `<div class="br-row"><span>${PART_CFG[p].zh}</span>${partStatus(u.parts[p].co)}<i>${Math.round(u.parts[p].co)}%</i></div>`).join('');
+    const hpCls = u.hp <= 0 ? 'br-hp dead' : (u.hp / u.maxHp < 0.35 ? 'br-hp low' : 'br-hp');
+    return `<div class="br-col">
+      <div class="br-name">${name}</div>
+      <div class="${hpCls}">AFW Body <b>${hp}</b></div>
+      <div class="br-wreck">耗損 ${wreck}%</div>
+      ${rows}
+      <div class="br-inf">步兵殘存 ${Math.ceil(u.infantry)}/${u.maxInf}</div>
+    </div>`;
+  };
+  return `<div class="br-head">BATTLE RESULT</div>
+    <div class="br-grid">${side(state.me, 'Weizegger')}<div class="br-vs">VS</div>${side(state.foe, 'Loyal Army')}</div>`;
 }
 
 document.getElementById('start').addEventListener('click', startBattle);
