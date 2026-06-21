@@ -5,10 +5,6 @@ import { PARTS, PART_POS, PART_CFG, caps } from './combat.js';
 
 const $ = (id) => document.getElementById(id);
 
-// map normalized aim space -> percentage inside the targeting zone
-const toX = (x) => 50 + x * 31;
-const toY = (y) => 50 - (y - 0.45) * 30;
-
 export class Hud {
   constructor() {
     this.el = {
@@ -37,8 +33,6 @@ export class Hud {
     for (const p of PARTS) {
       const m = document.createElement('button');
       m.className = 'pmark';
-      m.style.left = toX(PART_POS[p].x) + '%';
-      m.style.top = toY(PART_POS[p].y) + '%';
       m.innerHTML = `<span class="pdot"></span><span class="plbl">${PART_CFG[p].zh}</span><span class="pco">100</span>`;
       m.addEventListener('pointerdown', (e) => { e.preventDefault(); if (this.onTarget) this.onTarget(p); });
       this.el.tzone.appendChild(m);
@@ -89,9 +83,19 @@ export class Hud {
       acc.className = 'acc' + (me.acc >= 60 ? ' hi' : '');
     }
 
-    // move the targeting reticle to the current aim point
-    this.el.reticle.style.left = toX(state.aim.x) + '%';
-    this.el.reticle.style.top = toY(state.aim.y) + '%';
+    // place markers + reticle on the projected enemy (tracks the real AFW)
+    const scr = state.screen;
+    if (scr) {
+      for (const p of PARTS) {
+        const sp = scr.parts[p];
+        this.markers[p].style.left = sp.x + 'px';
+        this.markers[p].style.top = sp.y + 'px';
+      }
+      const rx = scr.torso.x + scr.dr.x * state.aim.x + scr.du.x * (state.aim.y - 0.45);
+      const ry = scr.torso.y + scr.dr.y * state.aim.x + scr.du.y * (state.aim.y - 0.45);
+      this.el.reticle.style.left = rx + 'px';
+      this.el.reticle.style.top = ry + 'px';
+    }
     const tighten = me.overheat || me.reload > 0 ? 1 : (1 - me.acc / 100);
     this.el.reticle.style.setProperty('--rs', (0.7 + tighten * 0.7).toFixed(2));
     this.el.reticle.classList.toggle('armed', me.maxArmed);

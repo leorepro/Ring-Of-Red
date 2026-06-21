@@ -3,7 +3,7 @@
 //  Gunner first-person scope onto a cold, grim AFW duel.
 // ============================================================
 import * as THREE from 'three';
-import { rangeSway } from './combat.js';
+import { rangeSway, PART_POS } from './combat.js';
 
 // engagement distances pulled far out — at this range a tiny aim wobble
 // walks the point of impact from the head down to the legs (sniper feel)
@@ -392,7 +392,29 @@ export class World {
 
     this._consumeFx(state);
     this._updateEffects(dt);
+    this._project(state);
     this.renderer.render(this.scene, this.camera);
+  }
+
+  // Project the enemy's part positions to screen so the HUD reticle and part
+  // markers track the real AFW behind them (through zoom, march and sway).
+  _project(state) {
+    const W = window.innerWidth, H = window.innerHeight;
+    const v = new THREE.Vector3();
+    const P = this._enemy.userData.parts;
+    const pr = (node) => {
+      node.getWorldPosition(v); v.project(this.camera);
+      return { x: (v.x * 0.5 + 0.5) * W, y: (-v.y * 0.5 + 0.5) * H };
+    };
+    const s = {};
+    for (const k in P) s[k] = pr(P[k]);
+    const dy = (PART_POS.head.y - PART_POS.torso.y) || 1;
+    const dx = (PART_POS.armR.x - PART_POS.armL.x) || 1;
+    state.screen = {
+      parts: s, torso: s.torso, W, H,
+      du: { x: (s.head.x - s.torso.x) / dy, y: (s.head.y - s.torso.y) / dy },
+      dr: { x: (s.armR.x - s.armL.x) / dx, y: (s.armR.y - s.armL.y) / dx },
+    };
   }
 
   // Underdamped spring → an impulse throws the view out, then it swings

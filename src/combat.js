@@ -60,7 +60,7 @@ const mkParts = () => ({
 });
 
 export function createState() {
-  const night = Math.random() < 0.5;
+  const night = false;          // daytime only
   const land = [5, 10, 15][Math.floor(Math.random() * 3)];
   return {
     phase: 'battle',
