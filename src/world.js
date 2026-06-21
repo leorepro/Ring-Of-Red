@@ -8,8 +8,8 @@ import { rangeSway, PART_POS } from './combat.js';
 // engagement distances pulled far out — at this range a tiny aim wobble
 // walks the point of impact from the head down to the legs (sniper feel)
 const RANGE_DIST = { SHORT: 200, MEDIUM: 360, LONG: 520 };
-const ENEMY_SCALE = 0.96;              // small distant figure (long sniper range)
-const ENEMY_BASE_Y = -1.0;             // biped model is built with feet at y≈0
+const ENEMY_SCALE = 4.8;               // ~1/8 of screen height at MEDIUM range
+const ENEMY_BASE_Y = 0.75 * ENEMY_SCALE - 0.6;   // keep the feet on the ground
 
 // cold day vs night palettes
 const DAY = {

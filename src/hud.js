@@ -99,7 +99,7 @@ export class Hud {
       for (const p of PARTS) { cx += ps[p].x; cy += ps[p].y; }
       cx /= PARTS.length; cy /= PARTS.length;
       const extent = Math.max(ps.legL.y, ps.legR.y) - Math.min(ps.head.y, ps.torso.y);
-      const k = Math.max(1, 170 / Math.max(8, extent));
+      const k = Math.max(1, 105 / Math.max(8, extent));
       const place = (x, y) => ({ x: cx + (x - cx) * k, y: cy + (y - cy) * k });
       for (const p of PARTS) {
         const q = place(ps[p].x, ps[p].y);

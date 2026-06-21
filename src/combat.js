@@ -21,13 +21,14 @@ export const PART_POS = {
 };
 
 // per-part: label, AFW-HP multiplier, coordination damage, hit radius
+// (radii kept tight, with gaps between parts, so off-aim shots actually miss)
 export const PART_CFG = {
-  head:  { zh: '頭部', mult: 2.2, coDmg: 60, size: 0.46 },
-  torso: { zh: '軀幹', mult: 1.0, coDmg: 20, size: 1.35 },
-  armL:  { zh: '左手', mult: 0.55, coDmg: 48, size: 0.62 },
-  armR:  { zh: '右手', mult: 0.55, coDmg: 48, size: 0.62 },
-  legL:  { zh: '左腳', mult: 0.6, coDmg: 45, size: 0.7 },
-  legR:  { zh: '右腳', mult: 0.6, coDmg: 45, size: 0.7 },
+  head:  { zh: '頭部', mult: 2.2, coDmg: 60, size: 0.26 },
+  torso: { zh: '軀幹', mult: 1.0, coDmg: 20, size: 0.50 },
+  armL:  { zh: '左手', mult: 0.55, coDmg: 48, size: 0.38 },
+  armR:  { zh: '右手', mult: 0.55, coDmg: 48, size: 0.38 },
+  legL:  { zh: '左腳', mult: 0.6, coDmg: 45, size: 0.42 },
+  legR:  { zh: '右腳', mult: 0.6, coDmg: 45, size: 0.42 },
 };
 
 const RANGE_CFG = {
