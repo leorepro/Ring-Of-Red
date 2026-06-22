@@ -190,6 +190,20 @@ function damagePart(unit, part, baseDmg, acc01, maxShot) {
   return hpDmg;
 }
 
+function supportDamageAmount(W, baseR, maxShot) {
+  const table = {
+    cannon: 1.0, sniper: 1.55, mg: 0.55, missile: 1.25, shrap: 1.05, rail: 2.2,
+  };
+  return baseR * (table[W.id] || 1) * (0.8 + Math.random() * 0.35) * (maxShot ? 1.6 : 1);
+}
+
+function supportHitChance(state, W, acc01, maxShot) {
+  if (maxShot) return 1;
+  const weaponBonus = W.id === 'sniper' ? 0.18 : W.id === 'mg' ? 0.08 : W.id === 'rail' ? 0.12 : 0;
+  const movingPenalty = state.foe.halted ? 1 : 0.72;
+  return Math.max(0.08, Math.min(0.96, (0.22 + acc01 * 0.72 + weaponBonus) * RANGE_HIT[state.env.range] * movingPenalty));
+}
+
 // ---- player intents ----
 
 export function setTarget(state, part) {
@@ -245,69 +259,94 @@ export function tryFire(state) {
   if (W.ammo !== Infinity) me.ammo[W.id] = Math.max(0, me.ammo[W.id] - 1);
 
   let shotFx = null;
-  if (W.id === 'cannon' && me.shell === 'AP') {
-    const inf = Math.round(rand(5, 9) * (maxShot ? 1.8 : 1));
-    state.foe.infantry = Math.max(0, state.foe.infantry - inf);
-    state.foe.hp = Math.max(0, state.foe.hp - Math.round(baseR * 0.25));
-    const sup = damageSquad(state.foe, rand(18, 30) * (maxShot ? 1.5 : 1), me.targetSupport);
-    if (Math.random() < 0.6) knockSquad(state.foe);
-    shotFx = { type: 'shot', side: 'me', weapon: 'cannon', part: 'torso', support: sup ? state.foe.squad.indexOf(sup) : null, hit: true, shrapnel: true };
-    state.fx.push(shotFx);
-    setBanner(state, `對人彈命中 — ${sup ? sup.zh : '敵步兵'} −${inf}`, 'me', 1.0);
-  } else if (W.kind === 'burst') {
-    // machine gun: a spray of pellets scattered across the silhouette
-    let total = 0, last = null;
-    for (let i = 0; i < 9; i++) {
-      const part = hitPart({ x: state.aim.x + (Math.random() - 0.5) * 0.9, y: state.aim.y + (Math.random() - 0.5) * 0.9 });
-      if (part) { total += damagePart(state.foe, part, baseR * W.dmg * pas.afwDmg, acc01, false); last = part; }
-    }
-    state.foe.infantry = Math.max(0, state.foe.infantry - rand(3, 6));
-    const sup = damageSquad(state.foe, rand(8, 16), me.targetSupport);
-    if (Math.random() < 0.45) damageSquad(state.foe, rand(6, 12), me.targetSupport);
-    shotFx = { type: 'shot', side: 'me', weapon: 'mg', part: last, support: sup ? state.foe.squad.indexOf(sup) : null, hit: total > 0 || !!sup, burst: true };
-    state.fx.push(shotFx);
-    setBanner(state, total > 0 ? `機槍掃射 −${total}` : '機槍掃射 — 落空', 'me', 1.0);
-  } else if (W.kind === 'multi') {
-    // shrapnel: aim part + a couple of nearby parts at once
-    const set = new Set(); const a = hitPart(state.aim); if (a) set.add(a);
-    set.add(PARTS[Math.floor(Math.random() * PARTS.length)]);
-    set.add(PARTS[Math.floor(Math.random() * PARTS.length)]);
-    let total = 0;
-    for (const part of set) total += damagePart(state.foe, part, baseR * W.dmg * pas.afwDmg, acc01, false);
-    state.foe.infantry = Math.max(0, state.foe.infantry - rand(4, 8));
-    const sup = damageSquad(state.foe, rand(14, 24), me.targetSupport);
-    if (Math.random() < 0.65) damageSquad(state.foe, rand(10, 18), me.targetSupport);
-    shotFx = { type: 'shot', side: 'me', weapon: 'shrap', part: a || 'torso', support: sup ? state.foe.squad.indexOf(sup) : null, hit: set.size > 0 || !!sup, multi: true };
-    state.fx.push(shotFx);
-    setBanner(state, `榴散彈 −${total}（${set.size} 部位）`, 'me', 1.0);
-  } else {
-    // single-target: cannon / sniper / missile(splash) / rail(pierce)
-    const part = maxShot ? me.targetPart : hitPart(state.aim);
-    // a marching enemy weaves out of the line of fire; closing the distance
-    // shrinks that window (exponentially), and Maximum Attack ignores it
-    const evade = !maxShot && !state.foe.halted
-      && Math.random() < Math.min(0.34, 0.16 / RANGE_HIT[state.env.range]);
-    if (part && evade) {
-      state.fx.push({ type: 'shot', side: 'me', weapon: W.id, part: null, hit: false });
-      setBanner(state, '敵機迴避 — 未命中', 'evade', 0.8);
-    } else if (part) {
-      const crit = W.kind === 'pierce' || part === 'head' || maxShot
-        || (W.id === 'sniper' && Math.random() < 0.6) || Math.random() < 0.1;
-      const base = baseR * (0.85 + Math.random() * 0.3) * pas.afwDmg * W.dmg * (crit ? 1.6 : 1);
-      let dmg = damagePart(state.foe, part, base, acc01, maxShot);
-      if (W.kind === 'splash') {
-        for (const ap of (ADJ[part] || [])) dmg += damagePart(state.foe, ap, base * 0.4, acc01, false);
-        damageSquad(state.foe, rand(12, 24), me.targetSupport);
-      }
-      if (W.kind === 'pierce' && part !== 'torso') dmg += damagePart(state.foe, 'torso', base * 0.5, acc01, false);
-      shotFx = { type: 'shot', side: 'me', weapon: W.id, part, hit: true, crit };
+  let supportResolved = false;
+  const targetSupport = Number.isInteger(me.targetSupport) ? state.foe.squad[me.targetSupport] : null;
+  if (targetSupport && targetSupport.hp > 0 && !targetSupport.down) {
+    supportResolved = true;
+    const chance = supportHitChance(state, W, acc01, maxShot);
+    const hit = Math.random() < chance;
+    if (hit) {
+      const before = targetSupport.hp;
+      const sup = damageSquad(state.foe, supportDamageAmount(W, baseR, maxShot), me.targetSupport);
+      const dmg = Math.max(0, Math.round(before - targetSupport.hp));
+      state.foe.infantry = Math.max(0, state.foe.infantry - (sup && sup.down ? 2 : 0.8));
+      shotFx = { type: 'shot', side: 'me', weapon: W.id, support: me.targetSupport, hit: true, soft: true, crit: sup && sup.down };
       state.fx.push(shotFx);
-      if (Math.random() < 0.25) knockSquad(state.foe);
-      const co = Math.round(state.foe.parts[part].co);
-      setBanner(state, `${crit ? '爆擊！' : '命中'} ${PART_CFG[part].zh} −${dmg}（協調 ${co}%）`, 'me', 1.0);
+      setBanner(state, `${sup && sup.down ? '敵支援無力化' : '敵支援命中'} — ${targetSupport.zh} −${dmg}`, 'me', 1.0);
+      if (targetSupport.down) me.targetSupport = null;
     } else {
-      state.fx.push({ type: 'shot', side: 'me', weapon: W.id, part: null, hit: false });
-      setBanner(state, '失準 — 擦過', 'evade', 0.8);
+      state.fx.push({ type: 'shot', side: 'me', weapon: W.id, support: me.targetSupport, hit: false, soft: true });
+      setBanner(state, '敵支援 — 未命中', 'evade', 0.8);
+    }
+  } else if (targetSupport) {
+    me.targetSupport = null;
+  }
+
+  if (!supportResolved) {
+    if (W.id === 'cannon' && me.shell === 'AP') {
+      const inf = Math.round(rand(5, 9) * (maxShot ? 1.8 : 1));
+      state.foe.infantry = Math.max(0, state.foe.infantry - inf);
+      state.foe.hp = Math.max(0, state.foe.hp - Math.round(baseR * 0.25));
+      const sup = damageSquad(state.foe, rand(18, 30) * (maxShot ? 1.5 : 1), me.targetSupport);
+      if (Math.random() < 0.6) knockSquad(state.foe);
+      shotFx = { type: 'shot', side: 'me', weapon: 'cannon', part: 'torso', support: sup ? state.foe.squad.indexOf(sup) : null, hit: true, shrapnel: true };
+      state.fx.push(shotFx);
+      setBanner(state, `對人彈命中 — ${sup ? sup.zh : '敵步兵'} −${inf}`, 'me', 1.0);
+    } else if (W.kind === 'burst') {
+      // machine gun: a spray of pellets scattered across the silhouette
+      let total = 0, last = null;
+      for (let i = 0; i < 9; i++) {
+        const part = hitPart({ x: state.aim.x + (Math.random() - 0.5) * 0.9, y: state.aim.y + (Math.random() - 0.5) * 0.9 });
+        if (part) { total += damagePart(state.foe, part, baseR * W.dmg * pas.afwDmg, acc01, false); last = part; }
+      }
+      state.foe.infantry = Math.max(0, state.foe.infantry - rand(3, 6));
+      const sup = damageSquad(state.foe, rand(8, 16), me.targetSupport);
+      if (Math.random() < 0.45) damageSquad(state.foe, rand(6, 12), me.targetSupport);
+      shotFx = { type: 'shot', side: 'me', weapon: 'mg', part: last, support: sup ? state.foe.squad.indexOf(sup) : null, hit: total > 0 || !!sup, burst: true };
+      state.fx.push(shotFx);
+      setBanner(state, total > 0 ? `機槍掃射 −${total}` : '機槍掃射 — 落空', 'me', 1.0);
+    } else if (W.kind === 'multi') {
+      // shrapnel: aim part + a couple of nearby parts at once
+      const set = new Set(); const a = hitPart(state.aim); if (a) set.add(a);
+      set.add(PARTS[Math.floor(Math.random() * PARTS.length)]);
+      set.add(PARTS[Math.floor(Math.random() * PARTS.length)]);
+      let total = 0;
+      for (const part of set) total += damagePart(state.foe, part, baseR * W.dmg * pas.afwDmg, acc01, false);
+      state.foe.infantry = Math.max(0, state.foe.infantry - rand(4, 8));
+      const sup = damageSquad(state.foe, rand(14, 24), me.targetSupport);
+      if (Math.random() < 0.65) damageSquad(state.foe, rand(10, 18), me.targetSupport);
+      shotFx = { type: 'shot', side: 'me', weapon: 'shrap', part: a || 'torso', support: sup ? state.foe.squad.indexOf(sup) : null, hit: set.size > 0 || !!sup, multi: true };
+      state.fx.push(shotFx);
+      setBanner(state, `榴散彈 −${total}（${set.size} 部位）`, 'me', 1.0);
+    } else {
+      // single-target: cannon / sniper / missile(splash) / rail(pierce)
+      const part = maxShot ? me.targetPart : hitPart(state.aim);
+      // a marching enemy weaves out of the line of fire; closing the distance
+      // shrinks that window (exponentially), and Maximum Attack ignores it
+      const evade = !maxShot && !state.foe.halted
+        && Math.random() < Math.min(0.34, 0.16 / RANGE_HIT[state.env.range]);
+      if (part && evade) {
+        state.fx.push({ type: 'shot', side: 'me', weapon: W.id, part: null, hit: false });
+        setBanner(state, '敵機迴避 — 未命中', 'evade', 0.8);
+      } else if (part) {
+        const crit = W.kind === 'pierce' || part === 'head' || maxShot
+          || (W.id === 'sniper' && Math.random() < 0.6) || Math.random() < 0.1;
+        const base = baseR * (0.85 + Math.random() * 0.3) * pas.afwDmg * W.dmg * (crit ? 1.6 : 1);
+        let dmg = damagePart(state.foe, part, base, acc01, maxShot);
+        if (W.kind === 'splash') {
+          for (const ap of (ADJ[part] || [])) dmg += damagePart(state.foe, ap, base * 0.4, acc01, false);
+          damageSquad(state.foe, rand(12, 24), me.targetSupport);
+        }
+        if (W.kind === 'pierce' && part !== 'torso') dmg += damagePart(state.foe, 'torso', base * 0.5, acc01, false);
+        shotFx = { type: 'shot', side: 'me', weapon: W.id, part, hit: true, crit };
+        state.fx.push(shotFx);
+        if (Math.random() < 0.25) knockSquad(state.foe);
+        const co = Math.round(state.foe.parts[part].co);
+        setBanner(state, `${crit ? '爆擊！' : '命中'} ${PART_CFG[part].zh} −${dmg}（協調 ${co}%）`, 'me', 1.0);
+      } else {
+        state.fx.push({ type: 'shot', side: 'me', weapon: W.id, part: null, hit: false });
+        setBanner(state, '失準 — 擦過', 'evade', 0.8);
+      }
     }
   }
 

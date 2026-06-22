@@ -896,15 +896,17 @@ export class World {
       } else if (e.type === 'shot' && e.side === 'me') {
         // shell flies from our hand to the targeted enemy part (or wide on a miss)
         const from = this._myMuzzleWorld();
-        const target = e.hit && Number.isInteger(e.support)
-          ? this._supportWorld(e.support)
+        const supportTarget = Number.isInteger(e.support) ? this._supportWorld(e.support) : null;
+        const target = supportTarget
+          ? (e.hit ? supportTarget : supportTarget.add(new THREE.Vector3((rnd() < 0 ? -1 : 1) * (8 + Math.random() * 10), -2, rnd() * 10)))
           : e.hit && e.part
           ? this._enemyPartWorld(e.part)
           : this._enemyPartWorld('torso').add(new THREE.Vector3((rnd() < 0 ? -1 : 1) * (14 + Math.random() * 14), 6 + Math.random() * 10, 0));
         if (e.kill) this._trackKill(from, target);
         const arrive = (p) => {
           if (e.hit) {
-            if (e.shrapnel) { this._explosion(p, 34); this._sparks(p, 0xffd27a, 8, 18); audio.impact('shrap', false); }
+            if (e.soft) { this._supportImpactFx(p, e.weapon, e.crit); audio.impact(e.weapon, !!e.crit); }
+            else if (e.shrapnel) { this._explosion(p, 34); this._sparks(p, 0xffd27a, 8, 18); audio.impact('shrap', false); }
             else { this._impactFx(e.part || 'torso', p, e.crit, e.weapon); e.crit ? audio.crit() : audio.impact(e.weapon, false); }
             this.kickVel.z += 1.2; this.trauma = Math.max(this.trauma, e.crit ? 0.5 : 0.3);
             if (e.kill) { this._explosion(p, 120); this._shockwave(p, 0xffffff, 32); this._killActive = false; this._killImpact = p.clone(); state.killLanded = true; }
@@ -1215,6 +1217,14 @@ export class World {
     if (!live.length) return null;
     const s = live[Math.floor(Math.random() * live.length)];
     return s.userData.muzzle.getWorldPosition(new THREE.Vector3());
+  }
+
+  _supportImpactFx(pos, weapon, down = false) {
+    const explosive = weapon === 'missile' || weapon === 'shrap' || weapon === 'cannon';
+    if (explosive) this._explosion(pos, down ? 58 : 34);
+    else this._muzzleFlash(pos, weapon === 'rail' ? 0xbfe0ff : 0xffd27a);
+    this._sparks(pos, down ? 0xfff0b0 : 0xffd27a, down ? 10 : 5, down ? 18 : 10);
+    this._smoke(pos.clone().setY(Math.max(0.5, pos.y - 0.8)), 0x5a5146, down ? 3.0 : 1.8, 3.2, 0.75);
   }
 
   // ---- VFX library ----------------------------------------------------
