@@ -40,6 +40,12 @@ export class Hud {
     this.lockCard.className = 'target-card';
     this.lockCard.innerHTML = '<b>NO LOCK</b><span>SCAN</span><i></i>';
     this.el.tzone.appendChild(this.lockCard);
+    this.foeSupport = document.createElement('div');
+    this.foeSupport.className = 'foe-support';
+    this.foeSupport.innerHTML = '<div class="fs-title">敵支援</div>'
+      + state.foe.squad.map((s, i) => `<div class="fs-row" data-i="${i}"><span>${s.zh}</span><i><b></b></i><em>36</em></div>`).join('');
+    this.el.root.appendChild(this.foeSupport);
+    this.foeRows = [...this.foeSupport.querySelectorAll('.fs-row')];
 
     // enemy part markers (tap to target)
     this.markers = {};
@@ -183,6 +189,15 @@ export class Hud {
 
     [...this.el.squadMe.children].forEach((d, i) => d.classList.toggle('down', state.me.squad[i].down));
     this.el.infMe.textContent = Math.ceil(me.infantry);
+    this.foeRows.forEach((row, i) => {
+      const s = foe.squad[i];
+      if (!s) return;
+      const hp = Math.max(0, Math.ceil(s.hp));
+      row.querySelector('b').style.width = Math.max(0, Math.min(100, s.hp / s.maxHp * 100)) + '%';
+      row.querySelector('em').textContent = s.down ? 'DOWN' : hp;
+      row.classList.toggle('down', s.down || s.hp <= 0);
+      row.classList.toggle('low', !s.down && s.hp / s.maxHp < 0.35);
+    });
 
     const b = this.el.banner;
     if (state.banner.t > 0 && state.banner.text) { b.textContent = state.banner.text; b.className = 'banner show ' + state.banner.kind; }

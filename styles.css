@@ -222,6 +222,24 @@ canvas#scene{position:fixed;inset:0;width:100%;height:100%;display:block;z-index
 .inf{font-family:var(--mono);font-size:.54rem;color:var(--muted);margin-top:.3rem}
 .inf b{color:var(--ink)}
 
+/* enemy rifle team status */
+.foe-support{position:absolute;right:calc(.6rem + var(--safe-r));top:calc(5.4rem + var(--safe-t));
+  width:148px;background:rgba(12,14,16,.68);border:1px solid rgba(192,68,58,.32);
+  border-right:2px solid rgba(192,68,58,.72);border-radius:5px;padding:.32rem .42rem;
+  font-family:var(--mono);pointer-events:none;text-align:right;text-shadow:0 1px 4px #000}
+.fs-title{font-size:.48rem;letter-spacing:.14em;color:#ff9a8e;margin-bottom:.22rem}
+.fs-row{display:grid;grid-template-columns:2rem 1fr 2.3rem;align-items:center;gap:.28rem;
+  font-size:.5rem;color:#d9d4ca;margin:.12rem 0}
+.fs-row span{color:#f0b1a9;white-space:nowrap}
+.fs-row i{height:5px;background:#0a0c0e;border:1px solid rgba(255,255,255,.1);border-radius:2px;overflow:hidden}
+.fs-row i b{display:block;height:100%;width:100%;background:linear-gradient(90deg,#7a2b25,#e05a5a)}
+.fs-row em{font-style:normal;color:#e6b53a;font-size:.46rem}
+.fs-row.low i b{background:linear-gradient(90deg,#b88716,#ffce6a)}
+.fs-row.down{opacity:.52}
+.fs-row.down span{color:#9a817e;text-decoration:line-through}
+.fs-row.down i b{background:#c0443a;width:0%!important}
+.fs-row.down em{color:#ff7a6a}
+
 /* control deck */
 .deck{margin-top:auto;display:flex;flex-direction:column;align-items:flex-end;gap:.4rem}
 .deck-aux{display:flex;gap:.5rem;flex-wrap:wrap;justify-content:flex-end}
@@ -288,6 +306,9 @@ canvas#scene{position:fixed;inset:0;width:100%;height:100%;display:block;z-index
 .br-row i{margin-left:auto;color:#8a948c;font-style:normal}
 .st-ok{color:#7fd07f}.st-dmg{color:#ffce6a}.st-dead{color:#ff7a6a}
 .br-inf{font-family:var(--mono);font-size:.58rem;color:var(--muted);margin-top:.3rem;border-top:1px solid var(--line);padding-top:.25rem}
+.br-support{margin-top:.22rem;border-top:1px solid rgba(255,255,255,.08);padding-top:.2rem}
+.br-row.br-sup span{color:#d6c6bd}
+.br-row.br-sup i{font-size:.52rem;color:#8a948c}
 
 /* anime pilot cut-in — slides in on dramatic beats */
 #cutin{position:fixed;left:0;bottom:150px;z-index:35;pointer-events:none;display:none;
@@ -336,7 +357,7 @@ canvas#scene{position:fixed;inset:0;width:100%;height:100%;display:block;z-index
 .cine.show span{opacity:.95}
 /* clean cinematic: hide the gameplay HUD during the kill cam (keep HP + banner) */
 body.ending .scope,body.ending .gauges,body.ending .squad,body.ending .self-parts,
-body.ending .deck,body.ending #heatwarn{opacity:0;pointer-events:none;transition:opacity .3s}
+body.ending .foe-support,body.ending .deck,body.ending #heatwarn{opacity:0;pointer-events:none;transition:opacity .3s}
 
 /* shorter screens (landscape phones): tuck gauges/squad in a bit */
 @media (orientation:landscape) and (max-height:430px){
@@ -359,6 +380,8 @@ body.ending .deck,body.ending #heatwarn{opacity:0;pointer-events:none;transition
   .squad{top:118px;right:calc(.5rem + var(--safe-r))}
   .squad-row{flex-direction:column;gap:.2rem;align-items:flex-end}
   .sq{font-size:.5rem}
+  .foe-support{top:218px;right:calc(.5rem + var(--safe-r));width:134px;padding:.28rem .36rem}
+  .fs-row{grid-template-columns:1.8rem 1fr 2.05rem;font-size:.48rem}
 
   /* heat warning + banner kept clear of the central ruler/% */
   .heatwarn{top:34%}

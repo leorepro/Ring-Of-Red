@@ -93,6 +93,12 @@ function finish() {
 function battleResult(state) {
   const partStatus = (co) => co <= 0 ? '<b class="st-dead">Destroyed</b>'
     : co < 50 ? '<b class="st-dmg">Damaged</b>' : '<b class="st-ok">Normal</b>';
+  const supportRows = (u) => u.squad.map((s) => {
+    const hp = Math.max(0, Math.ceil(s.hp));
+    const cls = s.down || hp <= 0 ? 'st-dead' : hp / s.maxHp < 0.35 ? 'st-dmg' : 'st-ok';
+    const txt = s.down || hp <= 0 ? 'Down' : `${hp}/${s.maxHp}`;
+    return `<div class="br-row br-sup"><span>${s.zh}</span><b class="${cls}">${txt}</b><i>${s.role.replace('.Guard', '')}</i></div>`;
+  }).join('');
   const side = (u, name) => {
     const hp = `${Math.ceil(u.hp)}/${u.maxHp}`;
     const wreck = Math.round((1 - u.hp / u.maxHp) * 100);
@@ -105,6 +111,7 @@ function battleResult(state) {
       <div class="br-wreck">耗損 ${wreck}%</div>
       ${rows}
       <div class="br-inf">步兵殘存 ${Math.ceil(u.infantry)}/${u.maxInf}</div>
+      <div class="br-support">${supportRows(u)}</div>
     </div>`;
   };
   return `<div class="br-head">BATTLE RESULT</div>
