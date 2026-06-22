@@ -111,18 +111,18 @@ canvas#scene{position:fixed;inset:0;width:100%;height:100%;display:block;z-index
   font-family:var(--mono);font-size:.52rem;letter-spacing:.12em;color:#dcebff;background:rgba(5,8,10,.55);
   border:1px solid rgba(120,160,200,.32);padding:.12rem .36rem;border-radius:2px;white-space:nowrap}
 /* per-weapon scope styles — each gun reads through a distinct sight */
-.reticle[data-w="sniper"] .ret-ring{inset:30%;border-color:rgba(150,220,255,.95);box-shadow:0 0 8px rgba(120,200,255,.5)}
+.reticle[data-w="sniper"] .ret-ring{width:48px;height:48px;border-color:rgba(150,220,255,.95);box-shadow:0 0 8px rgba(120,200,255,.5)}
 .reticle[data-w="sniper"] .ret-ring::after{inset:8%}
 .reticle[data-w="sniper"] .ret-h,.reticle[data-w="sniper"] .ret-v{background:rgba(150,220,255,.9)}
 .reticle[data-w="sniper"] .ret-h{left:-30%;right:-30%}
 .reticle[data-w="sniper"] .ret-v{top:-30%;bottom:-30%}
-.reticle[data-w="mg"] .ret-ring{inset:6%;border-style:dashed;border-color:rgba(255,210,120,.85)}
+.reticle[data-w="mg"] .ret-ring{width:72px;height:72px;border-style:dashed;border-color:rgba(255,210,120,.85)}
 .reticle[data-w="mg"] .ret-ring::after{display:none}
-.reticle[data-w="missile"] .ret-ring{inset:12%;border-radius:5px;border-color:#ff9a6a;box-shadow:0 0 10px rgba(255,120,70,.55)}
+.reticle[data-w="missile"] .ret-ring{width:64px;height:64px;border-radius:5px;border-color:#ff9a6a;box-shadow:0 0 10px rgba(255,120,70,.55)}
 .reticle[data-w="missile"] .ret-ring::after{border-radius:3px}
-.reticle[data-w="rail"] .ret-ring{transform:rotate(45deg);border-radius:0;border-color:#bfe6ff;box-shadow:0 0 12px rgba(150,210,255,.6)}
+.reticle[data-w="rail"] .ret-ring{width:58px;height:58px;transform:translate(-50%,-50%) rotate(45deg);border-radius:0;border-color:#bfe6ff;box-shadow:0 0 12px rgba(150,210,255,.6)}
 .reticle[data-w="rail"] .ret-ring::after{border-radius:0}
-.reticle[data-w="shrap"] .ret-ring{inset:2%;border-style:dotted;border-color:rgba(255,200,120,.85)}
+.reticle[data-w="shrap"] .ret-ring{width:78px;height:78px;border-style:dotted;border-color:rgba(255,200,120,.85)}
 .target-card{position:absolute;z-index:3;min-width:116px;padding:.28rem .42rem;
   background:linear-gradient(90deg,rgba(7,12,14,.82),rgba(12,18,18,.48));
   border-left:2px solid rgba(230,181,58,.7);border-top:1px solid rgba(230,181,58,.22);

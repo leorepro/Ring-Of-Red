@@ -67,6 +67,7 @@ export class World {
     this._enemy = this._buildAFW({ enemy: true });
     this._enemy.scale.setScalar(ENEMY_SCALE);
     this.scene.add(this._enemy);
+    this._buildTargetDesignator();
     this._buildPlayerBarrel();
 
     this.resize();
@@ -113,6 +114,29 @@ export class World {
     return new THREE.CanvasTexture(c);
   }
 
+  _scorchTexture() {
+    const c = document.createElement('canvas'); c.width = c.height = 128;
+    const g = c.getContext('2d');
+    const grd = g.createRadialGradient(64, 64, 0, 64, 64, 64);
+    grd.addColorStop(0, 'rgba(0,0,0,0.96)');
+    grd.addColorStop(0.34, 'rgba(42,18,8,0.86)');
+    grd.addColorStop(0.58, 'rgba(196,78,30,0.28)');
+    grd.addColorStop(1, 'rgba(0,0,0,0)');
+    g.fillStyle = grd; g.fillRect(0, 0, 128, 128);
+    g.globalCompositeOperation = 'lighter';
+    for (let i = 0; i < 38; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const r = 8 + Math.random() * 52;
+      g.fillStyle = `rgba(255,${110 + Math.random() * 90},60,${0.06 + Math.random() * 0.12})`;
+      g.beginPath();
+      g.arc(64 + Math.cos(a) * r, 64 + Math.sin(a) * r, 1 + Math.random() * 3, 0, Math.PI * 2);
+      g.fill();
+    }
+    const t = new THREE.CanvasTexture(c);
+    t.colorSpace = THREE.SRGBColorSpace;
+    return t;
+  }
+
   _buildSky() {
     // gradient dome (top → hazy horizon), recoloured per time of day
     this.skyU = {
@@ -131,6 +155,7 @@ export class World {
     this.scene.add(dome);
 
     this._glowTex = this._radialTexture();
+    this._scorchTex = this._scorchTexture();
     this.sunGlow = null; this.sunCore = null;
     this._cloudTex = this._cloudTexture();
     this._buildClouds();
@@ -375,6 +400,7 @@ export class World {
       add(knee, box(0.7, 0.6, 1.0, dark), -0.7, -3.7, 2.3);     // toe L
       add(knee, box(0.7, 0.6, 1.0, dark), 0.7, -3.7, 2.3);      // toe R
       leg.add(knee); leg.userData.knee = knee;
+      leg.userData.gaitDriven = true;
       return leg;
     };
     const legL = buildLeg(-1), legR = buildLeg(1); g.add(legL, legR);
@@ -406,6 +432,42 @@ export class World {
     this.myBarrel = barrel;
     this.barrelBaseZ = barrel.position.z;
     this.myMuzzleLocal = new THREE.Vector3(1.7, -2.2, -12);
+  }
+
+  _buildTargetDesignator() {
+    const mat = new THREE.MeshBasicMaterial({
+      color: 0x7fffd0, transparent: true, opacity: 0.0,
+      blending: THREE.AdditiveBlending, depthWrite: false,
+    });
+    this.designator = new THREE.Group();
+    const rings = [
+      { r: 1.0, tube: 0.018 },
+      { r: 0.62, tube: 0.012 },
+      { r: 1.34, tube: 0.01 },
+    ];
+    rings.forEach((cfg, i) => {
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(cfg.r, cfg.tube, 6, 72), mat.clone());
+      ring.userData.spin = i % 2 ? -1 : 1;
+      this.designator.add(ring);
+    });
+    this.scene.add(this.designator);
+  }
+
+  _updateTargetDesignator(pos, state, lock01, dt) {
+    if (!this.designator) return;
+    const active = state.phase === 'battle' && state.me && state.me.acc > 18;
+    this.designator.visible = active;
+    if (!active) return;
+    this.designator.position.copy(pos);
+    this.designator.lookAt(this.camera.position);
+    const scale = 7.5 + lock01 * 6.5 + Math.sin(this.t * 5.5) * 0.35;
+    this.designator.scale.setScalar(scale);
+    const hot = lock01 > 0.62;
+    this.designator.children.forEach((ring, i) => {
+      ring.rotation.z += (0.8 + i * 0.35) * ring.userData.spin * dt;
+      ring.material.opacity = (hot ? 0.44 : 0.22) * (0.65 + lock01 * 0.55) * (i === 1 ? 0.7 : 1);
+      ring.material.color.setHex(hot ? 0x7fffd0 : 0xe6b53a);
+    });
   }
 
   // ---------- per-frame ----------
@@ -482,7 +544,12 @@ export class World {
     this._enemy.position.set(0, ENEMY_BASE_Y, -this.dist);
     this.key.target.position.set(0, ENEMY_BASE_Y + 30, -this.dist);
     this.rim.target.position.set(0, ENEMY_BASE_Y + 42, -this.dist);
-    this.search.target.position.set(0, ENEMY_BASE_Y + 36, -this.dist);
+    const targetPart = state.me ? state.me.targetPart : 'torso';
+    const targetWorld = this._enemyPartWorld(targetPart);
+    this.search.target.position.copy(targetWorld);
+    const lock01 = state.me ? Math.min(1, state.me.acc / 92) : 0;
+    this.search.intensity = (state.env.night ? 4.8 : 1.15) + lock01 * (state.env.night ? 3.0 : 2.4);
+    this._updateTargetDesignator(targetWorld, state, lock01, dt);
 
     // walking gait — strides while marching, settles to a near-stop when halted
     const foeMarching = !(state.foe && state.foe.halted);
@@ -495,8 +562,12 @@ export class World {
     });
     this._enemy.position.y += Math.abs(Math.sin(this.t * gait)) * amp * 0.5;
 
-    // reflect locational damage: destroyed parts char and sag
-    if (state.foe && state.foe.parts) this._reflectDamage(this._enemy, state.foe.parts);
+    // reflect locational damage: armor wears down progressively, then breaks.
+    if (state.foe && state.foe.parts) {
+      this._reflectWear(this._enemy, state.foe.parts);
+      this._reflectDamage(this._enemy, state.foe.parts);
+    }
+    this._animateHitReactions(dt);
 
     // destroyed parts keep smoking / burning
     this._smokeT = (this._smokeT || 0) + dt;
@@ -703,7 +774,7 @@ export class World {
         const arrive = (p) => {
           if (e.hit) {
             if (e.shrapnel) { this._explosion(p, 34); this._sparks(p, 0xffd27a, 8, 18); audio.explosion(false); }
-            else { this._impactFx(e.part || 'torso', p, e.crit); e.crit ? audio.crit() : audio.explosion(false); }
+            else { this._impactFx(e.part || 'torso', p, e.crit, e.weapon); e.crit ? audio.crit() : audio.explosion(false); }
             this.kickVel.z += 1.2; this.trauma = Math.max(this.trauma, e.crit ? 0.5 : 0.3);
             if (e.kill) { this._explosion(p, 120); this._shockwave(p, 0xffffff, 32); this._killActive = false; this._killImpact = p.clone(); state.killLanded = true; }
           } else this._dirtGeyser(p);
@@ -762,6 +833,43 @@ export class World {
       if (!node || node.userData.broken === broken) continue;
       node.userData.broken = broken;
       if (broken) this._destroyPart(name, node);
+    }
+  }
+
+  _reflectWear(mech, parts) {
+    const P = mech.userData.parts;
+    for (const name in parts) {
+      const node = P[name];
+      if (!node || node.userData.broken) continue;
+      const co = parts[name].co;
+      const level = co < 30 ? 2 : co < 65 ? 1 : 0;
+      if (node.userData.wearLevel === level) continue;
+      node.userData.wearLevel = level;
+      node.traverse((o) => {
+        if (!o.isMesh || !o.material || !o.material.color) return;
+        if (!o.material.userData.baseColor) {
+          o.material = o.material.clone();
+          o.material.userData.baseColor = o.material.color.clone();
+          if (o.material.emissive) o.material.userData.baseEmissive = o.material.emissive.clone();
+        }
+        const base = o.material.userData.baseColor;
+        if (level === 0) {
+          o.material.color.copy(base);
+          if (o.material.emissive && o.material.userData.baseEmissive) o.material.emissive.copy(o.material.userData.baseEmissive);
+          return;
+        }
+        const worn = level === 1 ? new THREE.Color(0x5b5044) : new THREE.Color(0x241b16);
+        o.material.color.copy(base).lerp(worn, level === 1 ? 0.38 : 0.7);
+        o.material.roughness = Math.min(1, (o.material.roughness || 0.6) + 0.18);
+        if (o.material.emissive) {
+          o.material.emissive.setHex(level === 2 ? 0x3a1006 : 0x080402);
+          o.material.emissiveIntensity = level === 2 ? 0.32 : 0.08;
+        }
+      });
+      if (level > 0) {
+        const wp = node.getWorldPosition(new THREE.Vector3());
+        this._smoke(wp, level === 2 ? 0x2a201b : 0x4c443c, level === 2 ? 2.4 : 1.7, level === 2 ? 4 : 2.5, 0.75);
+      }
     }
   }
 
@@ -1038,12 +1146,22 @@ export class World {
   }
 
   // location-specific impact effect for a hit on the enemy AFW
-  _impactFx(part, pos, crit) {
+  _impactFx(part, pos, crit, weapon = 'cannon') {
     const SPARK = { head: 0x9fd8ff, torso: 0xffd27a, armL: 0xffae5a, armR: 0xffae5a, legL: 0xffe0a0, legR: 0xffe0a0 };
     const color = SPARK[part] || 0xffd27a;
-    if (crit) { this._critFx(pos); return; }
-    this._explosion(pos, part === 'torso' ? 95 : 70);
+    const heavy = weapon === 'missile' || weapon === 'rail' || weapon === 'sniper';
+    const splash = weapon === 'missile' || weapon === 'shrap';
+    this._hitReact(part, crit ? 1.3 : heavy ? 0.95 : 0.65);
+    this._scorch(part, pos, crit ? 15 : heavy ? 11 : 8, crit ? 12 : 8);
+    this._moltenGlow(part, pos, crit ? 0xfff0b0 : color, crit ? 1.1 : 0.7);
+    if (crit) { this._critFx(pos, part); return; }
+    this._explosion(pos, splash ? 115 : part === 'torso' ? 95 : 70);
     this._sparks(pos, color, part === 'head' ? 22 : 16, part === 'head' ? 34 : 26);
+    if (weapon === 'rail') this._shockwave(pos, 0xbfe0ff, 22);
+    if (weapon === 'missile') {
+      this._shockwave(pos, 0xffd6a0, 30);
+      this._smoke(pos, 0x302822, 8, 9, 1.7);
+    }
     if (part === 'torso') this._debrisBurst(pos, 0x8a7048, 10, 20);
     else if (part === 'legL' || part === 'legR') { this._smoke(pos.clone().setY(0.5), 0x4a4036, 4, 5); this._debrisBurst(pos, 0x3a3f3a, 5, 14); }
     else this._debrisBurst(pos, 0x3a3f3a, 5, 14);
@@ -1051,15 +1169,112 @@ export class World {
   }
 
   // critical hit: big blast + shockwave + white flash + on-screen "CRITICAL"
-  _critFx(pos) {
+  _critFx(pos, part = 'torso') {
+    this._hitReact(part, 1.8);
     this._explosion(pos, 150);
     this._shockwave(pos, 0xffffff, 34);
     this._sparks(pos, 0xfff0b0, 22, 34);
     this._debrisBurst(pos, 0x6b5a3a, 12, 22);
     this._smoke(pos, 0x201c18, 5, 9, 1.4);
+    this._scorch(part, pos, 18, 14);
+    this._moltenGlow(part, pos, 0xfff0b0, 1.35);
     this.trauma = Math.max(this.trauma, 0.9);
     this._whiteFlash();
     this._critText();
+  }
+
+  _hitReact(part, power = 0.8) {
+    const node = this._enemy.userData.parts[part] || this._enemy.userData.parts.torso;
+    if (!node || node.userData.fall) return;
+    node.userData.restRot ||= node.rotation.clone();
+    node.userData.hit = {
+      life: 0.5,
+      dur: 0.5,
+      amp: power * (part === 'torso' ? 0.1 : 0.18),
+      axis: new THREE.Vector3(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).normalize(),
+      prev: new THREE.Vector3(),
+    };
+  }
+
+  _animateHitReactions(dt) {
+    const parts = this._enemy && this._enemy.userData.parts;
+    if (!parts) return;
+    for (const name in parts) {
+      const node = parts[name];
+      const h = node.userData.hit;
+      if (!h || node.userData.fall) continue;
+      if (!node.userData.gaitDriven && node.userData.restRot) {
+        node.rotation.copy(node.userData.restRot);
+      }
+      h.life -= dt;
+      const u = Math.max(0, h.life / h.dur);
+      const pulse = Math.sin((1 - u) * Math.PI * 4) * u * h.amp;
+      node.rotation.x += h.axis.x * pulse;
+      node.rotation.y += h.axis.y * pulse;
+      node.rotation.z += h.axis.z * pulse;
+      if (h.life <= 0) {
+        if (!node.userData.gaitDriven && node.userData.restRot) node.rotation.copy(node.userData.restRot);
+        node.userData.hit = null;
+      }
+    }
+  }
+
+  _scorch(part, pos, size = 9, life = 8) {
+    const node = this._enemy.userData.parts[part] || this._enemy.userData.parts.torso;
+    if (!node) return;
+    const mark = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: this._scorchTex, color: 0xffffff, transparent: true, opacity: 0.74,
+      depthWrite: false, blending: THREE.NormalBlending,
+    }));
+    mark.position.copy(node.worldToLocal(pos.clone()));
+    const localSize = size / ENEMY_SCALE;
+    mark.scale.set(localSize, localSize, 1);
+    mark.renderOrder = 2;
+    node.add(mark);
+    node.userData.scars ||= [];
+    node.userData.scars.push(mark);
+    while (node.userData.scars.length > 7) {
+      const old = node.userData.scars.shift();
+      old.parent && old.parent.remove(old);
+      old.material.dispose();
+    }
+    this.effects.push((dt) => {
+      life -= dt;
+      mark.material.opacity = Math.max(0.24, Math.min(0.74, life / 8 * 0.74));
+      if (life <= 0) { mark.material.opacity = 0.24; return false; }
+      return true;
+    });
+  }
+
+  _moltenGlow(part, pos, color = 0xffb05a, power = 0.8) {
+    const node = this._enemy.userData.parts[part] || this._enemy.userData.parts.torso;
+    if (!node) return;
+    const glow = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: this._glowTex, color, transparent: true, opacity: 0.95,
+      depthWrite: false, blending: THREE.AdditiveBlending,
+    }));
+    glow.position.copy(node.worldToLocal(pos.clone()));
+    glow.scale.setScalar((6 + power * 8) / ENEMY_SCALE);
+    node.add(glow);
+    const light = new THREE.PointLight(color, 4.5 * power, 90, 2);
+    light.position.copy(pos); this.scene.add(light);
+    let life = 0.45 + power * 0.25;
+    const dur = life;
+    this.effects.push((dt) => {
+      life -= dt;
+      const k = Math.max(0, life / dur);
+      glow.material.opacity = k * 0.95;
+      glow.scale.setScalar((6 + power * 16 * (1 - k)) / ENEMY_SCALE);
+      light.intensity = 4.5 * power * k;
+      light.position.copy(glow.getWorldPosition(new THREE.Vector3()));
+      if (life <= 0) {
+        glow.parent && glow.parent.remove(glow);
+        this.scene.remove(light);
+        glow.material.dispose();
+        return false;
+      }
+      return true;
+    });
   }
 
   _whiteFlash() {
