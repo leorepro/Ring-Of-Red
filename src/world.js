@@ -68,6 +68,7 @@ export class World {
     this._enemy.scale.setScalar(ENEMY_SCALE);
     this.scene.add(this._enemy);
     this._buildTargetDesignator();
+    this._buildInfantrySquads();
     this._buildPlayerBarrel();
 
     this.resize();
@@ -453,6 +454,70 @@ export class World {
     this.scene.add(this.designator);
   }
 
+  _buildInfantrySquads() {
+    this.infantrySquads = {
+      me: this._makeInfantrySquad(false, 3),
+      foe: this._makeInfantrySquad(true, 3),
+    };
+    this.scene.add(this.infantrySquads.me, this.infantrySquads.foe);
+  }
+
+  _makeInfantrySquad(enemy, count = 3) {
+    const group = new THREE.Group();
+    group.userData.slots = [];
+    const coat = new THREE.MeshStandardMaterial({
+      color: enemy ? 0x6b4b34 : 0x425c3d,
+      roughness: 0.86,
+      metalness: 0.06,
+      flatShading: true,
+    });
+    const dark = new THREE.MeshStandardMaterial({ color: 0x1c1b18, roughness: 0.9, metalness: 0.1, flatShading: true });
+    const helm = new THREE.MeshStandardMaterial({ color: enemy ? 0x3a3027 : 0x2d3a2d, roughness: 0.82, metalness: 0.12, flatShading: true });
+    const skin = new THREE.MeshStandardMaterial({ color: 0xb58a62, roughness: 0.9, metalness: 0, flatShading: true });
+    const hpBack = new THREE.MeshBasicMaterial({ color: 0x160f0d, transparent: true, opacity: 0.78, depthWrite: false });
+    const hpFill = new THREE.MeshBasicMaterial({ color: enemy ? 0xff5a4a : 0x7fd07f, transparent: true, opacity: 0.9, depthWrite: false });
+    const add = (parent, mesh, x, y, z) => {
+      mesh.position.set(x, y, z);
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      parent.add(mesh);
+      return mesh;
+    };
+    for (let i = 0; i < count; i++) {
+      const s = new THREE.Group();
+      const col = i - (count - 1) / 2;
+      s.position.set(col * 18 + (Math.random() - 0.5) * 3, 1.45, (Math.random() - 0.5) * 8);
+      add(s, new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.72, 1.9, 6), coat), 0, 1.05, 0);
+      add(s, new THREE.Mesh(new THREE.SphereGeometry(0.42, 7, 5), skin), 0, 2.26, 0.05);
+      add(s, new THREE.Mesh(new THREE.SphereGeometry(0.48, 7, 4), helm), 0, 2.43, 0.02);
+      const pack = add(s, new THREE.Mesh(new THREE.BoxGeometry(0.8, 1.0, 0.34), dark), 0, 1.14, 0.52);
+      pack.rotation.x = -0.12;
+      const rifle = add(s, new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.08, 2.1, 6), dark), 0.38, 1.58, -0.9);
+      rifle.rotation.x = Math.PI / 2;
+      rifle.rotation.z = 0.18;
+      const muzzle = new THREE.Object3D();
+      muzzle.position.set(0.38, 1.58, -2.05);
+      s.add(muzzle);
+      const bar = new THREE.Group();
+      const back = new THREE.Mesh(new THREE.PlaneGeometry(3.0, 0.34), hpBack.clone());
+      const fill = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), hpFill.clone());
+      fill.scale.set(2.72, 0.18, 1);
+      fill.position.z = 0.01;
+      bar.add(back, fill);
+      bar.position.set(0, 3.35, 0);
+      s.add(bar);
+      s.userData.muzzle = muzzle;
+      s.userData.hpBar = bar;
+      s.userData.hpFill = fill;
+      s.userData.phase = Math.random() * Math.PI * 2;
+      s.userData.downSide = (Math.random() < 0.5 ? -1 : 1) * (0.45 + Math.random() * 0.3);
+      s.scale.setScalar(1.45 + Math.random() * 0.25);
+      group.add(s);
+      group.userData.slots.push(s);
+    }
+    return group;
+  }
+
   _updateTargetDesignator(pos, state, lock01, dt) {
     if (!this.designator) return;
     const active = state.phase === 'battle' && state.me && state.me.acc > 18;
@@ -468,6 +533,54 @@ export class World {
       ring.material.opacity = (hot ? 0.44 : 0.22) * (0.65 + lock01 * 0.55) * (i === 1 ? 0.7 : 1);
       ring.material.color.setHex(hot ? 0x7fffd0 : 0xe6b53a);
     });
+  }
+
+  _updateInfantrySquads(state, dt, relocating) {
+    if (!this.infantrySquads) return;
+    const updateSide = (side, unit, basePos, facing) => {
+      const group = this.infantrySquads[side];
+      if (!group || !unit) return;
+      group.position.copy(basePos);
+      group.rotation.y = facing;
+      const slots = group.userData.slots || [];
+      slots.forEach((s, i) => {
+        const member = unit.squad && unit.squad[i];
+        s.visible = !!member;
+        if (!member) return;
+        const down = member.down || member.hp <= 0;
+        s.userData.active = !down;
+        if (s.userData.hpBar) {
+          s.userData.hpBar.visible = !down;
+          s.userData.hpBar.lookAt(this.camera.position);
+        }
+        if (s.userData.hpFill && member.maxHp) {
+          const ratio = Math.max(0, Math.min(1, member.hp / member.maxHp));
+          s.userData.hpFill.scale.x = 2.72 * ratio;
+          s.userData.hpFill.position.x = -1.36 * (1 - ratio);
+        }
+        if (down) {
+          if (!s.userData.wasDown) {
+            const wp = s.getWorldPosition(new THREE.Vector3());
+            this._smoke(wp, 0x5a5146, 1.8, 2.4, 0.65);
+            this._sparks(wp, 0xffd27a, 4, 9);
+          }
+          s.userData.wasDown = true;
+          s.position.y = 0.34;
+          s.rotation.x = Math.PI / 2;
+          s.rotation.z = s.userData.downSide;
+          return;
+        }
+        s.userData.wasDown = false;
+        const moving = relocating || !unit.halted;
+        const step = moving ? 5.5 : 2.0;
+        const bob = Math.sin(this.t * step + s.userData.phase) * (moving ? 0.18 : 0.04);
+        s.position.y = 1.45 + Math.abs(bob);
+        s.rotation.x = 0;
+        s.rotation.z = Math.sin(this.t * step + s.userData.phase) * (moving ? 0.05 : 0.015);
+      });
+    };
+    updateSide('foe', state.foe, new THREE.Vector3(0, 0, -this.dist + 58), Math.PI);
+    updateSide('me', state.me, new THREE.Vector3(0, 0, -92), 0);
   }
 
   // ---------- per-frame ----------
@@ -561,6 +674,7 @@ export class World {
       leg.grp.userData.knee.rotation.x = Math.max(0, -a) * 1.4;
     });
     this._enemy.position.y += Math.abs(Math.sin(this.t * gait)) * amp * 0.5;
+    this._updateInfantrySquads(state, dt, relocating);
 
     // reflect locational damage: armor wears down progressively, then breaks.
     if (state.foe && state.foe.parts) {
@@ -808,7 +922,7 @@ export class World {
         this.trauma = Math.max(this.trauma, 0.5);
         audio.dodge();
       } else if (e.type === 'inffire') {
-        this._infFlicker(e.side);
+        this._infFlicker(e.side, e.unit);
       }
     }
     state.fx.length = 0;
@@ -1041,11 +1155,15 @@ export class World {
   }
 
   // tiny gunfire flicker for the supporting infantry crossfire
-  _infFlicker(side) {
-    const j = () => (Math.random() - 0.5);
-    const pos = side === 'me'
+  _infFlicker(side, unitIndex = null) {
+    const j = () => Math.random() - 0.5;
+    const pos = this._infantryMuzzle(side, unitIndex) || (side === 'me'
       ? this.camera.position.clone().add(new THREE.Vector3(j() * 9, -6.5, -12 + j() * 5))
-      : this._enemy.position.clone().add(new THREE.Vector3(j() * 6, -1.6, 3 + j() * 2));
+      : this._enemy.position.clone().add(new THREE.Vector3(j() * 6, -1.6, 3 + j() * 2)));
+    const target = side === 'me'
+      ? this._enemyPartWorld(Math.random() < 0.7 ? 'torso' : 'legL').add(new THREE.Vector3(j() * 28, j() * 18, j() * 18))
+      : this.camera.position.clone().add(new THREE.Vector3(j() * 18, -CAM_Y + 7 + Math.random() * 5, -20 + j() * 20));
+    this._tracer(pos, target, side === 'me' ? 0xffe0a0 : 0xff9a6a, false);
     const m = new THREE.Sprite(new THREE.SpriteMaterial({
       map: this._glowTex, color: side === 'me' ? 0xffe0a0 : 0xffcf9a,
       transparent: true, opacity: 0.9, depthWrite: false, blending: THREE.AdditiveBlending,
@@ -1058,6 +1176,19 @@ export class World {
       if (life <= 0) { this.scene.remove(m); m.material.dispose(); return false; }
       return true;
     });
+  }
+
+  _infantryMuzzle(side, unitIndex = null) {
+    const group = this.infantrySquads && this.infantrySquads[side];
+    if (!group) return null;
+    const slots = group.userData.slots || [];
+    if (unitIndex !== null && slots[unitIndex] && slots[unitIndex].visible && slots[unitIndex].userData.active) {
+      return slots[unitIndex].userData.muzzle.getWorldPosition(new THREE.Vector3());
+    }
+    const live = slots.filter((s) => s.visible && s.userData.active && s.userData.muzzle);
+    if (!live.length) return null;
+    const s = live[Math.floor(Math.random() * live.length)];
+    return s.userData.muzzle.getWorldPosition(new THREE.Vector3());
   }
 
   // ---- VFX library ----------------------------------------------------

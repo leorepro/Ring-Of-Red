@@ -76,7 +76,8 @@ const CLASS = {
 };
 const SQUADS = { me: ['Shooter', 'Supply', 'Mechanic'], foe: ['Shooter', 'Infantry', 'Medic'] };
 const mkSquad = (names) => names.map((name) => ({
-  name, zh: CLASS[name].zh, role: CLASS[name].role, side: CLASS[name].side, down: false,
+  name, zh: CLASS[name].zh, role: CLASS[name].role, side: CLASS[name].side,
+  hp: 36, maxHp: 36, down: false,
 }));
 
 const mkParts = () => ({
@@ -233,6 +234,7 @@ export function tryFire(state) {
     const inf = Math.round(rand(5, 9) * (maxShot ? 1.8 : 1));
     state.foe.infantry = Math.max(0, state.foe.infantry - inf);
     state.foe.hp = Math.max(0, state.foe.hp - Math.round(baseR * 0.25));
+    damageSquad(state.foe, rand(18, 30) * (maxShot ? 1.5 : 1));
     if (Math.random() < 0.6) knockSquad(state.foe);
     shotFx = { type: 'shot', side: 'me', weapon: 'cannon', part: 'torso', hit: true, shrapnel: true };
     state.fx.push(shotFx);
@@ -245,6 +247,8 @@ export function tryFire(state) {
       if (part) { total += damagePart(state.foe, part, baseR * W.dmg * pas.afwDmg, acc01, false); last = part; }
     }
     state.foe.infantry = Math.max(0, state.foe.infantry - rand(3, 6));
+    damageSquad(state.foe, rand(8, 16));
+    if (Math.random() < 0.45) damageSquad(state.foe, rand(6, 12));
     shotFx = { type: 'shot', side: 'me', weapon: 'mg', part: last, hit: total > 0, burst: true };
     state.fx.push(shotFx);
     setBanner(state, total > 0 ? `機槍掃射 −${total}` : '機槍掃射 — 落空', 'me', 1.0);
@@ -256,6 +260,8 @@ export function tryFire(state) {
     let total = 0;
     for (const part of set) total += damagePart(state.foe, part, baseR * W.dmg * pas.afwDmg, acc01, false);
     state.foe.infantry = Math.max(0, state.foe.infantry - rand(4, 8));
+    damageSquad(state.foe, rand(14, 24));
+    if (Math.random() < 0.65) damageSquad(state.foe, rand(10, 18));
     shotFx = { type: 'shot', side: 'me', weapon: 'shrap', part: a || 'torso', hit: set.size > 0, multi: true };
     state.fx.push(shotFx);
     setBanner(state, `榴散彈 −${total}（${set.size} 部位）`, 'me', 1.0);
@@ -274,7 +280,10 @@ export function tryFire(state) {
         || (W.id === 'sniper' && Math.random() < 0.6) || Math.random() < 0.1;
       const base = baseR * (0.85 + Math.random() * 0.3) * pas.afwDmg * W.dmg * (crit ? 1.6 : 1);
       let dmg = damagePart(state.foe, part, base, acc01, maxShot);
-      if (W.kind === 'splash') for (const ap of (ADJ[part] || [])) dmg += damagePart(state.foe, ap, base * 0.4, acc01, false);
+      if (W.kind === 'splash') {
+        for (const ap of (ADJ[part] || [])) dmg += damagePart(state.foe, ap, base * 0.4, acc01, false);
+        damageSquad(state.foe, rand(12, 24));
+      }
       if (W.kind === 'pierce' && part !== 'torso') dmg += damagePart(state.foe, 'torso', base * 0.5, acc01, false);
       shotFx = { type: 'shot', side: 'me', weapon: W.id, part, hit: true, crit };
       state.fx.push(shotFx);
@@ -343,9 +352,23 @@ export function tryHalt(state) {
 function knockSquad(unit) {
   const alive = unit.squad.filter((s) => !s.down);
   if (alive.length) {
-    alive[Math.floor(Math.random() * alive.length)].down = true;
+    const s = alive[Math.floor(Math.random() * alive.length)];
+    s.hp = 0;
+    s.down = true;
     unit.infantry = Math.max(0, unit.infantry - (3 + Math.floor(Math.random() * 4)));
   }
+}
+
+function damageSquad(unit, amount) {
+  const alive = unit.squad.filter((s) => !s.down && s.hp > 0);
+  if (!alive.length) return null;
+  const s = alive[Math.floor(Math.random() * alive.length)];
+  s.hp = Math.max(0, s.hp - amount);
+  if (s.hp <= 0) {
+    s.down = true;
+    unit.infantry = Math.max(0, unit.infantry - (3 + Math.floor(Math.random() * 4)));
+  }
+  return s;
 }
 
 function endBattle(state, outcome) { state.phase = outcome; state.dodge = 0; }
@@ -464,12 +487,17 @@ function infantryExchange(state, mp, fp) {
   }
   if (foe.infantry > 0 && me.hp > 0) {
     me.infantry = Math.max(0, me.infantry - rand(0.6, 1.4) * fp.apPower);
+    const riflemen = foe.squad.map((s, i) => ({ s, i })).filter(({ s }) => !s.down && s.hp > 0);
+    if (riflemen.length > 0) {
+      me.hp = Math.max(0, me.hp - riflemen.length * rand(0.25, 0.55) * (foe.infantry / foe.maxInf) * fp.apPower);
+      riflemen.forEach(({ i }) => state.fx.push({ type: 'inffire', side: 'foe', unit: i }));
+      if (me.hp <= 0) return endBattle(state, 'lose');
+    }
     const at = atSquads(foe);
     if (at > 0) {
       me.hp = Math.max(0, me.hp - at * rand(0.6, 1.2) * (foe.infantry / foe.maxInf));
       if (me.hp <= 0) return endBattle(state, 'lose');
     }
-    state.fx.push({ type: 'inffire', side: 'foe' });
   }
 }
 
