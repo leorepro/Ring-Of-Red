@@ -177,7 +177,10 @@ function hitPart(aim) {
 
 function damagePart(unit, part, baseDmg, acc01, maxShot) {
   const cfg = PART_CFG[part];
-  unit.parts[part].co = Math.max(0, unit.parts[part].co - cfg.coDmg * (0.7 + Math.random() * 0.6));
+  const oneShotBreak = part === 'armL' || part === 'armR' || part === 'legL' || part === 'legR';
+  unit.parts[part].co = oneShotBreak
+    ? 0
+    : Math.max(0, unit.parts[part].co - cfg.coDmg * (0.7 + Math.random() * 0.6));
   const hpDmg = Math.round(baseDmg * cfg.mult);
   unit.hp = Math.max(0, unit.hp - hpDmg);
   if (part === 'head' && (unit.parts.head.co <= 0 || Math.random() < (maxShot ? 0.6 : 0.22 * acc01))) {

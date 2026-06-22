@@ -563,6 +563,7 @@ export class World {
             const wp = s.getWorldPosition(new THREE.Vector3());
             this._smoke(wp, 0x5a5146, 1.8, 2.4, 0.65);
             this._sparks(wp, 0xffd27a, 4, 9);
+            audio.soldierDown();
           }
           s.userData.wasDown = true;
           s.position.y = 0.34;
@@ -887,8 +888,8 @@ export class World {
         if (e.kill) this._trackKill(from, target);
         const arrive = (p) => {
           if (e.hit) {
-            if (e.shrapnel) { this._explosion(p, 34); this._sparks(p, 0xffd27a, 8, 18); audio.explosion(false); }
-            else { this._impactFx(e.part || 'torso', p, e.crit, e.weapon); e.crit ? audio.crit() : audio.explosion(false); }
+            if (e.shrapnel) { this._explosion(p, 34); this._sparks(p, 0xffd27a, 8, 18); audio.impact('shrap', false); }
+            else { this._impactFx(e.part || 'torso', p, e.crit, e.weapon); e.crit ? audio.crit() : audio.impact(e.weapon, false); }
             this.kickVel.z += 1.2; this.trauma = Math.max(this.trauma, e.crit ? 0.5 : 0.3);
             if (e.kill) { this._explosion(p, 120); this._shockwave(p, 0xffffff, 32); this._killActive = false; this._killImpact = p.clone(); state.killLanded = true; }
           } else this._dirtGeyser(p);
@@ -1157,6 +1158,7 @@ export class World {
   // tiny gunfire flicker for the supporting infantry crossfire
   _infFlicker(side, unitIndex = null) {
     const j = () => Math.random() - 0.5;
+    audio.rifle(side);
     const pos = this._infantryMuzzle(side, unitIndex) || (side === 'me'
       ? this.camera.position.clone().add(new THREE.Vector3(j() * 9, -6.5, -12 + j() * 5))
       : this._enemy.position.clone().add(new THREE.Vector3(j() * 6, -1.6, 3 + j() * 2)));
