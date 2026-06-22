@@ -36,6 +36,9 @@ export class World {
     this.canvas = canvas;
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
     this.renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
+    this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    this.renderer.toneMappingExposure = 0.92;
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
@@ -77,12 +80,26 @@ export class World {
     this.key = new THREE.DirectionalLight(DAY.key, DAY.keyI);
     this.key.position.set(-30, 46, -10);
     this.key.castShadow = true;
-    this.key.shadow.mapSize.set(1024, 1024);
-    this.key.shadow.camera.near = 1; this.key.shadow.camera.far = 200;
-    const d = 80;
+    this.key.shadow.mapSize.set(2048, 2048);
+    this.key.shadow.camera.near = 1; this.key.shadow.camera.far = 900;
+    this.key.shadow.normalBias = 0.08;
+    const d = 260;
     Object.assign(this.key.shadow.camera, { left: -d, right: d, top: d, bottom: -d });
     this.scene.add(this.key);
     this.scene.add(this.key.target);
+
+    this.rim = new THREE.SpotLight(0x9fd8ff, 0.0, 900, Math.PI / 7, 0.85, 1.4);
+    this.rim.position.set(-210, 220, -620);
+    this.rim.target.position.set(0, ENEMY_BASE_Y + 44, -RANGE_DIST.MEDIUM);
+    this.rim.castShadow = true;
+    this.rim.shadow.mapSize.set(1024, 1024);
+    this.rim.shadow.normalBias = 0.1;
+    this.scene.add(this.rim, this.rim.target);
+
+    this.search = new THREE.SpotLight(0xffe2b0, 0.0, 720, Math.PI / 9, 0.92, 1.6);
+    this.search.position.set(42, CAM_Y + 18, 38);
+    this.search.target.position.set(0, ENEMY_BASE_Y + 42, -RANGE_DIST.MEDIUM);
+    this.scene.add(this.search, this.search.target);
   }
 
   _radialTexture() {
@@ -188,9 +205,66 @@ export class World {
     ground.receiveShadow = true;
     this.scene.add(ground);
 
-    // battlefield kept clear of props — only the enemy AFW stands on it
-    this.debris = [];
+    this._buildBattlefieldSetDressing();
+    this._buildGroundFog();
     this._zNear = 30; this._zFar = -1900;
+  }
+
+  _buildBattlefieldSetDressing() {
+    this.debris = [];
+    this.puddles = [];
+    const mud = new THREE.MeshStandardMaterial({ color: 0x3e3a30, roughness: 0.98, metalness: 0 });
+    const darkMud = new THREE.MeshStandardMaterial({ color: 0x272822, roughness: 1, metalness: 0 });
+    const water = new THREE.MeshPhysicalMaterial({
+      color: 0x465761, roughness: 0.08, metalness: 0, transmission: 0, transparent: true,
+      opacity: 0.48, clearcoat: 1, clearcoatRoughness: 0.05, envMapIntensity: 0.8,
+    });
+    const makeCrater = (x, z, s) => {
+      const crater = new THREE.Mesh(new THREE.CylinderGeometry(s * 1.4, s * 1.9, 0.28, 18), darkMud);
+      crater.position.set(x, 0.08, z); crater.scale.y = 0.24; crater.receiveShadow = true;
+      this.scene.add(crater); this.debris.push(crater);
+    };
+    const makePuddle = (x, z, sx, sz) => {
+      const puddle = new THREE.Mesh(new THREE.CircleGeometry(1, 32), water);
+      puddle.rotation.x = -Math.PI / 2; puddle.position.set(x, 0.19, z); puddle.scale.set(sx, sz, 1);
+      puddle.userData.baseScale = new THREE.Vector2(sx, sz);
+      puddle.renderOrder = 1; this.scene.add(puddle); this.puddles.push(puddle); this.debris.push(puddle);
+    };
+    const makeWreck = (x, z, s, rot) => {
+      const group = new THREE.Group(); group.position.set(x, 1.0, z); group.rotation.y = rot;
+      const hull = new THREE.Mesh(new THREE.BoxGeometry(9 * s, 2.0 * s, 4.2 * s), mud);
+      const pipe = new THREE.Mesh(new THREE.CylinderGeometry(0.38 * s, 0.48 * s, 10 * s, 10), mud);
+      pipe.rotation.z = Math.PI / 2; pipe.position.set(1.8 * s, 1.3 * s, 0.7 * s);
+      group.add(hull, pipe);
+      group.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+      this.scene.add(group); this.debris.push(group);
+    };
+    for (let i = 0; i < 18; i++) {
+      makeCrater((Math.random() - 0.5) * 900, -120 - Math.random() * 1500, 6 + Math.random() * 14);
+    }
+    for (let i = 0; i < 8; i++) {
+      makePuddle((Math.random() - 0.5) * 760, -160 - Math.random() * 1300, 10 + Math.random() * 28, 4 + Math.random() * 12);
+    }
+    for (let i = 0; i < 7; i++) {
+      makeWreck((Math.random() - 0.5) * 820, -260 - Math.random() * 1450, 0.75 + Math.random() * 0.8, Math.random() * Math.PI);
+    }
+  }
+
+  _buildGroundFog() {
+    this.groundFog = [];
+    const mat = new THREE.SpriteMaterial({
+      map: this._glowTex, color: 0xaeb7bd, transparent: true, opacity: 0.18,
+      depthWrite: false, fog: false, blending: THREE.NormalBlending,
+    });
+    for (let i = 0; i < 28; i++) {
+      const s = new THREE.Sprite(mat.clone());
+      s.position.set((Math.random() - 0.5) * 1400, 7 + Math.random() * 16, -120 - Math.random() * 1500);
+      s.scale.set(170 + Math.random() * 260, 28 + Math.random() * 44, 1);
+      s.userData.spd = 5 + Math.random() * 10;
+      s.userData.phase = Math.random() * Math.PI * 2;
+      s.userData.baseOpacity = s.material.opacity;
+      this.scene.add(s); this.groundFog.push(s);
+    }
   }
 
   // a detailed bipedal AFW: head, torso, two arm-cannons (the "hands" that
@@ -200,26 +274,40 @@ export class World {
     const g = new THREE.Group();
     // desert-tan armoured battle frame (Ring of Red AFW): warm sand camo with
     // gunmetal joints and a red unit marking
-    const body  = enemy ? 0xc3a877 : 0x9aa06a;   // main sand armour
-    const body2 = enemy ? 0xa78a55 : 0x7c8350;   // darker camo panels
-    const steel = enemy ? 0x8b8d84 : 0x787b72;   // gunmetal joints
-    const dark  = 0x4a463c;                       // dark brown detail
+    const body  = enemy ? 0xb89761 : 0x828c5f;   // main painted armour
+    const body2 = enemy ? 0x7e6540 : 0x5f6b45;   // darker camo panels
+    const steel = enemy ? 0x6f736e : 0x666c66;   // gunmetal joints
+    const dark  = 0x282722;                       // exposed internals
     const accent = enemy ? 0xb23a2c : 0x3f6f9a;   // red (enemy) / blue (ally) marking
-    const trim  = enemy ? 0x796238 : 0x47566a;   // muted trim
-    const mat = (c, m = 0.4, r = 0.7) => new THREE.MeshStandardMaterial({ color: c, flatShading: true, roughness: r, metalness: m });
-    const visMat = new THREE.MeshStandardMaterial({ color: 0x123, emissive: enemy ? 0xff5a3a : 0x6fd0ff, emissiveIntensity: 0.9, flatShading: true });
+    const trim  = enemy ? 0xd0b46f : 0x6f8aa8;   // exposed edge trim
+    const mat = (c, m = 0.28, r = 0.62) => new THREE.MeshStandardMaterial({ color: c, roughness: r, metalness: m });
+    const visMat = new THREE.MeshStandardMaterial({ color: 0x05070a, emissive: enemy ? 0xff3b24 : 0x6fd0ff, emissiveIntensity: 1.8 });
     const box = (w, h, d, c, m, r) => new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat(c, m, r));
     const cyl = (rt, rb, h, c, seg = 10) => new THREE.Mesh(new THREE.CylinderGeometry(rt, rb, h, seg), mat(c, 0.5, 0.6));
     const add = (parent, mesh, x, y, z, cast = true) => { mesh.position.set(x, y, z); mesh.castShadow = cast; parent.add(mesh); return mesh; };
+    const plate = (parent, w, h, d, x, y, z, c = body, rx = 0, ry = 0, rz = 0) => {
+      const p = add(parent, box(w, h, d, c, 0.22, 0.5), x, y, z);
+      p.rotation.set(rx, ry, rz);
+      const e = new THREE.LineSegments(
+        new THREE.EdgesGeometry(p.geometry, 26),
+        new THREE.LineBasicMaterial({ color: 0x1b1712, transparent: true, opacity: 0.38 }),
+      );
+      p.add(e);
+      return p;
+    };
 
     // ---- pelvis / hip ----
     add(g, box(4.0, 2.2, 3.0, body2), 0, 6.0, 0);
-    add(g, box(4.6, 0.6, 3.2, steel), 0, 7.0, 0);            // belt
+    add(g, box(4.6, 0.6, 3.2, steel, 0.75, 0.38), 0, 7.0, 0);            // belt
     add(g, box(2.2, 1.4, 1.0, dark), 0, 5.4, 1.5);           // crotch guard
+    plate(g, 1.8, 0.55, 3.4, -2.0, 6.4, 0.15, body, 0, 0, -0.12);
+    plate(g, 1.8, 0.55, 3.4, 2.0, 6.4, 0.15, body, 0, 0, 0.12);
 
     // ---- torso ----
     const torso = new THREE.Group(); torso.position.y = 9.4;
     add(torso, box(5.0, 4.6, 3.2, body), 0, 0, 0);           // chest core
+    plate(torso, 2.5, 3.0, 0.6, -1.45, 0.2, 1.85, body, -0.18, -0.08, 0.04);
+    plate(torso, 2.5, 3.0, 0.6, 1.45, 0.2, 1.85, body, -0.18, 0.08, -0.04);
     add(torso, box(5.6, 1.4, 3.4, body2), 0, 1.9, 0);        // upper deck
     const gla = add(torso, box(4.4, 2.0, 1.0, steel), 0, -0.4, 1.5); gla.rotation.x = -0.4;  // sloped glacis
     add(torso, box(1.4, 1.0, 0.3, visMat), 0, 0.2, 2.0, false);   // chest sensor (glow)
@@ -233,13 +321,17 @@ export class World {
     add(torso, box(3.6, 3.2, 1.4, body2), 0, 0.4, -2.0);
     add(torso, cyl(0.6, 0.7, 1.4, dark), -1.0, -1.2, -2.6).rotation.x = Math.PI / 2;
     add(torso, cyl(0.6, 0.7, 1.4, dark), 1.0, -1.2, -2.6).rotation.x = Math.PI / 2;
+    add(torso, box(0.28, 4.2, 0.28, trim, 0.7, 0.24), -2.85, 0.1, 0.2);
+    add(torso, box(0.28, 4.2, 0.28, trim, 0.7, 0.24), 2.85, 0.1, 0.2);
     // shoulder yokes
-    add(torso, box(7.0, 1.4, 2.4, steel), 0, 1.6, 0);
+    add(torso, box(7.0, 1.4, 2.4, steel, 0.7, 0.38), 0, 1.6, 0);
     g.add(torso);
 
     // ---- head ----
     const head = new THREE.Group(); head.position.y = 12.6;
     add(head, box(2.0, 1.7, 2.0, body), 0, 0, 0);
+    plate(head, 1.0, 1.35, 0.42, -0.62, 0, 1.16, body2, -0.08, -0.16, 0);
+    plate(head, 1.0, 1.35, 0.42, 0.62, 0, 1.16, body2, -0.08, 0.16, 0);
     add(head, box(2.2, 0.5, 2.2, steel), 0, 0.9, 0);          // crest
     add(head, box(1.7, 0.5, 0.25, visMat), 0, 0.05, 1.05, false);  // visor glow
     add(head, cyl(0.06, 0.06, 1.6, trim), 0.8, 1.6, -0.3);   // antenna
@@ -251,11 +343,12 @@ export class World {
     const buildArm = (side) => {
       const arm = new THREE.Group(); arm.position.set(side * 3.4, 11.0, 0);
       add(arm, box(2.4, 2.4, 2.6, body), 0, 0, 0);                 // pauldron
-      add(arm, box(2.7, 0.8, 2.9, steel), 0, 1.1, 0);              // pauldron cap
+      plate(arm, 2.95, 0.62, 2.95, 0, 1.2, 0, body2, 0, 0, side * 0.08);
       add(arm, box(0.6, 1.2, 0.6, accent), side * 1.25, 0.2, 0.2); // shoulder accent
       add(arm, box(1.6, 1.6, 2.2, body2), 0, -1.6, 0);            // upper arm
+      add(arm, cyl(0.16, 0.16, 3.2, trim, 8), side * 0.75, -1.6, 0.55).rotation.x = 0.25;
       // long low-recoil cannon pointing forward (-z), thin and far-reaching
-      add(arm, box(1.8, 1.8, 3.4, steel), 0, -1.9, -2.2);         // breech housing
+      add(arm, box(1.8, 1.8, 3.4, steel, 0.8, 0.32), 0, -1.9, -2.2);         // breech housing
       add(arm, cyl(0.7, 0.7, 1.6, dark), 0, -1.9, -1.0);          // drum
       const barrel = add(arm, cyl(0.42, 0.6, 10.0, steel), 0, -1.9, -7.6); barrel.rotation.x = Math.PI / 2;
       add(arm, cyl(0.34, 0.34, 6.0, dark), 0, -1.9, -7.6).rotation.x = Math.PI / 2;  // bore
@@ -274,10 +367,11 @@ export class World {
       add(leg, box(2.1, 0.8, 2.1, steel), 0, -0.7, 0);          // thigh collar
       const knee = new THREE.Group(); knee.position.y = -3.4;
       add(knee, box(1.5, 1.4, 1.6, steel), 0, 0, 0);            // knee joint
-      add(knee, box(1.0, 1.2, 0.4, accent), 0, 0, 1.0);         // knee guard
+      plate(knee, 1.45, 1.3, 0.46, 0, 0, 1.0, accent, -0.18, 0, 0);
       add(knee, box(1.7, 3.2, 1.7, body), 0, -1.8, 0);          // shin
-      add(knee, cyl(0.18, 0.18, 3.0, dark), side * 0.9, -1.6, 0.6); // hydraulic piston
-      add(knee, box(2.4, 0.8, 4.0, steel), 0, -3.6, 0.5);       // foot
+      add(knee, cyl(0.18, 0.18, 3.0, trim, 10), side * 0.9, -1.6, 0.6); // hydraulic piston
+      plate(knee, 1.9, 2.6, 0.52, 0, -1.8, 0.98, body2, -0.12, 0, 0);
+      add(knee, box(2.4, 0.8, 4.0, steel, 0.78, 0.36), 0, -3.6, 0.5);       // foot
       add(knee, box(0.7, 0.6, 1.0, dark), -0.7, -3.7, 2.3);     // toe L
       add(knee, box(0.7, 0.6, 1.0, dark), 0.7, -3.7, 2.3);      // toe R
       leg.add(knee); leg.userData.knee = knee;
@@ -295,6 +389,8 @@ export class World {
     };
     g.userData.legs = [{ grp: legL, phase: 0 }, { grp: legR, phase: Math.PI }];
     g.rotation.y = enemy ? Math.PI : 0;    // enemy faces the camera
+    const outline = new THREE.Box3().setFromObject(g);
+    g.userData.height = outline.max.y - outline.min.y;
     return g;
   }
 
@@ -325,6 +421,17 @@ export class World {
     this.hemi.color.setHex(p.hemiSky); this.hemi.groundColor.setHex(p.hemiGround);
     this.hemi.intensity = p.ambI;
     this.key.color.setHex(p.key); this.key.intensity = p.keyI;
+    this.rim.color.setHex(night ? 0x9fd8ff : 0xffe0b0);
+    this.rim.intensity = night ? 7.5 : 2.6;
+    this.search.color.setHex(night ? 0xcfe8ff : 0xffddb0);
+    this.search.intensity = night ? 6.2 : 1.8;
+    if (this.groundFog) {
+      this.groundFog.forEach((s) => {
+        s.material.color.setHex(night ? 0x7d8b9a : 0xd0d8d8);
+        s.userData.baseOpacity = night ? 0.24 : 0.15;
+        s.material.opacity = s.userData.baseOpacity;
+      });
+    }
     // sky dome gradient only (no sun/clouds)
     this.skyU.top.value.setHex(p.skyTop);
     this.skyU.horizon.value.setHex(p.skyHorizon);
@@ -338,6 +445,19 @@ export class World {
     for (const c of this.clouds) {
       c.position.x += c.userData.spd * dt;
       if (c.position.x > 1700) c.position.x = -1700;
+    }
+    if (this.groundFog) {
+      for (const s of this.groundFog) {
+        s.position.x += Math.sin(this.t * 0.2 + s.userData.phase) * dt * 6 + s.userData.spd * dt;
+        s.material.opacity = s.userData.baseOpacity * (0.84 + Math.sin(this.t * 0.35 + s.userData.phase) * 0.16);
+        if (s.position.x > 850) s.position.x = -850;
+      }
+    }
+    if (this.puddles) {
+      for (const p of this.puddles) {
+        const k = 1 + Math.sin(this.t * 1.4 + p.position.x * 0.02) * 0.018;
+        p.scale.set(p.userData.baseScale.x * k, p.userData.baseScale.y / k, 1);
+      }
     }
 
     // Both AFWs are constantly marching forward: scroll the battlefield
@@ -360,6 +480,9 @@ export class World {
     this.targetDist = RANGE_DIST[state.env.range];
     this.dist += (this.targetDist - this.dist) * Math.min(1, dt * 2.2);
     this._enemy.position.set(0, ENEMY_BASE_Y, -this.dist);
+    this.key.target.position.set(0, ENEMY_BASE_Y + 30, -this.dist);
+    this.rim.target.position.set(0, ENEMY_BASE_Y + 42, -this.dist);
+    this.search.target.position.set(0, ENEMY_BASE_Y + 36, -this.dist);
 
     // walking gait — strides while marching, settles to a near-stop when halted
     const foeMarching = !(state.foe && state.foe.halted);

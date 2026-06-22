@@ -32,6 +32,15 @@ export class Hud {
   show() { this.el.root.classList.remove('hidden'); }
 
   _build(state) {
+    if (!this.el.reticle.querySelector('.ret-sweep')) {
+      this.el.reticle.insertAdjacentHTML('beforeend',
+        '<div class="ret-corners"></div><div class="ret-sweep"></div><div class="ret-disp"></div><div class="ret-weapon"></div>');
+    }
+    this.lockCard = document.createElement('div');
+    this.lockCard.className = 'target-card';
+    this.lockCard.innerHTML = '<b>NO LOCK</b><span>SCAN</span><i></i>';
+    this.el.tzone.appendChild(this.lockCard);
+
     // enemy part markers (tap to target)
     this.markers = {};
     for (const p of PARTS) {
@@ -99,6 +108,8 @@ export class Hud {
       acc.className = 'acc' + (me.acc >= 60 ? ' hi' : '');
     }
 
+    const live = state.phase === 'battle' ? currentHitPart(state) : null;
+
     // place markers + reticle on the projected enemy (tracks the real AFW).
     // The enemy is a small distant figure, so expand the marker cluster around
     // its centre to a readable minimum size while staying centred on it.
@@ -111,8 +122,10 @@ export class Hud {
       const extent = Math.max(ps.legL.y, ps.legR.y) - Math.min(ps.head.y, ps.torso.y);
       const k = Math.max(1, 105 / Math.max(8, extent));
       const place = (x, y) => ({ x: cx + (x - cx) * k, y: cy + (y - cy) * k });
+      const placed = {};
       for (const p of PARTS) {
         const q = place(ps[p].x, ps[p].y);
+        placed[p] = q;
         this.markers[p].style.left = q.x + 'px';
         this.markers[p].style.top = q.y + 'px';
       }
@@ -122,15 +135,26 @@ export class Hud {
       );
       this.el.reticle.style.left = r.x + 'px';
       this.el.reticle.style.top = r.y + 'px';
+
+      const lockPart = live || me.targetPart;
+      const lockPos = placed[lockPart] || r;
+      this.lockCard.style.left = Math.min(scr.W - 132, Math.max(12, lockPos.x + 22)) + 'px';
+      this.lockCard.style.top = Math.min(scr.H - 84, Math.max(72, lockPos.y - 18)) + 'px';
     }
     const tighten = me.overheat || me.reload > 0 ? 1 : (1 - me.acc / 100);
     this.el.reticle.style.setProperty('--rs', (0.7 + tighten * 0.7).toFixed(2));
+    this.el.reticle.style.setProperty('--spread', (22 + tighten * 54).toFixed(1) + 'px');
+    this.el.reticle.style.setProperty('--heat', Math.min(1, me.heat / 100).toFixed(2));
+    this.el.reticle.style.setProperty('--lock', Math.min(1, me.acc / 92).toFixed(2));
     this.el.reticle.classList.toggle('armed', me.maxArmed);
+    this.el.reticle.classList.toggle('locked', !!live && me.acc >= 50);
     this.el.reticle.dataset.w = me.weapon;        // per-weapon scope styling
+    const rw = this.el.reticle.querySelector('.ret-weapon');
+    if (rw) rw.textContent = weaponDef(me.weapon).zh;
 
     // enemy part markers: coordination, selected target, and the part the
     // reticle is currently over (lights up = will be hit)
-    const live = state.phase === 'battle' ? currentHitPart(state) : null;
+    const lockPart = live || me.targetPart;
     for (const p of PARTS) {
       const mk = this.markers[p];
       const co = Math.round(foe.parts[p].co);
@@ -139,6 +163,10 @@ export class Hud {
       mk.classList.toggle('live', p === live && co > 0);
       mk.classList.toggle('dead', co <= 0);
     }
+    const lockCo = Math.round(foe.parts[lockPart].co);
+    this.lockCard.classList.toggle('hot', !!live);
+    this.lockCard.classList.toggle('dead', lockCo <= 0);
+    this.lockCard.innerHTML = `<b>${PART_CFG[lockPart].zh}</b><span>${live ? 'IMPACT SOLUTION' : 'TRACKING TARGET'}</span><i>CO ${lockCo}% · ${env.range} · ${weaponDef(me.weapon).zh}</i>`;
     // our own coordination
     for (const p of PARTS) {
       const co = Math.max(0, Math.round(me.parts[p].co));
