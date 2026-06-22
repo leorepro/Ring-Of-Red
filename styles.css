@@ -85,6 +85,20 @@ canvas#scene{position:fixed;inset:0;width:100%;height:100%;display:block;z-index
 .pmark.live .pco{color:#7fffd0}
 .pmark.dead .pdot{border-color:var(--enemy);background:rgba(192,68,58,.4)}
 .pmark.dead .pco{color:var(--enemy)}
+.smark{position:absolute;transform:translate(-50%,-50%);pointer-events:auto;cursor:pointer;
+  background:none;border:none;padding:10px;min-width:52px;min-height:38px;display:grid;place-items:center}
+.smark .sdot{width:11px;height:11px;border:1px solid rgba(255,154,106,.65);border-radius:2px;
+  background:rgba(192,68,58,.22);box-shadow:0 0 0 8px rgba(192,68,58,.05),0 0 10px rgba(192,68,58,.32);
+  transform:rotate(45deg);transition:transform .12s,box-shadow .12s,background .12s,border-color .12s}
+.smark .slbl{position:absolute;left:50%;top:24px;transform:translateX(-50%);
+  font-family:var(--mono);font-size:.48rem;letter-spacing:.08em;color:#ffb3aa;
+  white-space:nowrap;text-shadow:0 1px 4px #000;opacity:.78}
+.smark.sel .sdot{border-color:#7fffd0;background:rgba(120,255,200,.34);
+  box-shadow:0 0 0 12px rgba(120,255,200,.08),0 0 18px rgba(120,255,200,.78);transform:rotate(45deg) scale(1.24)}
+.smark.sel .slbl{color:#7fffd0;opacity:1}
+.smark.down{opacity:.42}
+.smark.down .sdot{border-color:#7a2b25;background:rgba(60,24,20,.6);box-shadow:none}
+.smark.down .slbl{text-decoration:line-through;color:#a98782}
 .reticle{position:absolute;left:50%;top:50%;width:118px;height:118px;
   transform:translate(-50%,-50%) scale(var(--rs,1));transition:left .05s linear,top .05s linear;opacity:.96;
   filter:drop-shadow(0 0 8px rgba(0,0,0,.8))}
@@ -235,6 +249,8 @@ canvas#scene{position:fixed;inset:0;width:100%;height:100%;display:block;z-index
 .fs-row i b{display:block;height:100%;width:100%;background:linear-gradient(90deg,#7a2b25,#e05a5a)}
 .fs-row em{font-style:normal;color:#e6b53a;font-size:.46rem}
 .fs-row.low i b{background:linear-gradient(90deg,#b88716,#ffce6a)}
+.fs-row.sel span,.fs-row.sel em{color:#7fffd0}
+.fs-row.sel i{border-color:rgba(120,255,200,.45);box-shadow:0 0 10px rgba(120,255,200,.18)}
 .fs-row.down{opacity:.52}
 .fs-row.down span{color:#9a817e;text-decoration:line-through}
 .fs-row.down i b{background:#c0443a;width:0%!important}

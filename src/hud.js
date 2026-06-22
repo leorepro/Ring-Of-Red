@@ -27,6 +27,7 @@ export class Hud {
     };
     this._built = false;
     this.onTarget = null;        // set by main.js: (part) => ...
+    this.onSupportTarget = null; // set by main.js: (index) => ...
   }
 
   show() { this.el.root.classList.remove('hidden'); }
@@ -46,6 +47,15 @@ export class Hud {
       + state.foe.squad.map((s, i) => `<div class="fs-row" data-i="${i}"><span>${s.zh}</span><i><b></b></i><em>36</em></div>`).join('');
     this.el.root.appendChild(this.foeSupport);
     this.foeRows = [...this.foeSupport.querySelectorAll('.fs-row')];
+    this.supportMarkers = [];
+    state.foe.squad.forEach((s, i) => {
+      const m = document.createElement('button');
+      m.className = 'smark';
+      m.innerHTML = `<span class="sdot"></span><span class="slbl">${s.zh}</span>`;
+      m.addEventListener('pointerdown', (e) => { e.preventDefault(); if (this.onSupportTarget) this.onSupportTarget(i); });
+      this.el.tzone.appendChild(m);
+      this.supportMarkers.push(m);
+    });
 
     // enemy part markers (tap to target)
     this.markers = {};
@@ -141,11 +151,27 @@ export class Hud {
       );
       this.el.reticle.style.left = r.x + 'px';
       this.el.reticle.style.top = r.y + 'px';
+      if (scr.support && this.supportMarkers) {
+        scr.support.forEach((q, i) => {
+          const mk = this.supportMarkers[i];
+          if (!mk) return;
+          mk.style.left = q.x + 'px';
+          mk.style.top = q.y + 'px';
+          mk.classList.toggle('hidden', !q.visible);
+        });
+      }
 
       const lockPart = live || me.targetPart;
       const lockPos = placed[lockPart] || r;
       this.lockCard.style.left = Math.min(scr.W - 132, Math.max(12, lockPos.x + 22)) + 'px';
       this.lockCard.style.top = Math.min(scr.H - 84, Math.max(72, lockPos.y - 18)) + 'px';
+      const supportLock = Number.isInteger(me.targetSupport) ? scr.support && scr.support[me.targetSupport] : null;
+      if (supportLock && supportLock.visible) {
+        this.el.reticle.style.left = supportLock.x + 'px';
+        this.el.reticle.style.top = supportLock.y + 'px';
+        this.lockCard.style.left = Math.min(scr.W - 132, Math.max(12, supportLock.x + 22)) + 'px';
+        this.lockCard.style.top = Math.min(scr.H - 84, Math.max(72, supportLock.y - 18)) + 'px';
+      }
     }
     const tighten = me.overheat || me.reload > 0 ? 1 : (1 - me.acc / 100);
     this.el.reticle.style.setProperty('--rs', (0.7 + tighten * 0.7).toFixed(2));
@@ -170,9 +196,12 @@ export class Hud {
       mk.classList.toggle('dead', co <= 0);
     }
     const lockCo = Math.round(foe.parts[lockPart].co);
-    this.lockCard.classList.toggle('hot', !!live);
-    this.lockCard.classList.toggle('dead', lockCo <= 0);
-    this.lockCard.innerHTML = `<b>${PART_CFG[lockPart].zh}</b><span>${live ? 'IMPACT SOLUTION' : 'TRACKING TARGET'}</span><i>CO ${lockCo}% · ${env.range} · ${weaponDef(me.weapon).zh}</i>`;
+    const sup = Number.isInteger(me.targetSupport) ? foe.squad[me.targetSupport] : null;
+    this.lockCard.classList.toggle('hot', !!live || !!sup);
+    this.lockCard.classList.toggle('dead', sup ? sup.down || sup.hp <= 0 : lockCo <= 0);
+    this.lockCard.innerHTML = sup
+      ? `<b>${sup.zh}</b><span>RIFLE TEAM LOCK</span><i>HP ${Math.max(0, Math.ceil(sup.hp))}/${sup.maxHp} · ${env.range} · ${weaponDef(me.weapon).zh}</i>`
+      : `<b>${PART_CFG[lockPart].zh}</b><span>${live ? 'IMPACT SOLUTION' : 'TRACKING TARGET'}</span><i>CO ${lockCo}% · ${env.range} · ${weaponDef(me.weapon).zh}</i>`;
     // our own coordination
     for (const p of PARTS) {
       const co = Math.max(0, Math.round(me.parts[p].co));
@@ -195,8 +224,14 @@ export class Hud {
       const hp = Math.max(0, Math.ceil(s.hp));
       row.querySelector('b').style.width = Math.max(0, Math.min(100, s.hp / s.maxHp * 100)) + '%';
       row.querySelector('em').textContent = s.down ? 'DOWN' : hp;
+      row.classList.toggle('sel', me.targetSupport === i);
       row.classList.toggle('down', s.down || s.hp <= 0);
       row.classList.toggle('low', !s.down && s.hp / s.maxHp < 0.35);
+    });
+    this.supportMarkers.forEach((mk, i) => {
+      const s = foe.squad[i];
+      mk.classList.toggle('sel', me.targetSupport === i);
+      mk.classList.toggle('down', !s || s.down || s.hp <= 0);
     });
 
     const b = this.el.banner;

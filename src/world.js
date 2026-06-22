@@ -842,10 +842,24 @@ export class World {
     };
     const s = {};
     for (const k in A) s[k] = pr(A[k]);
+    const support = [];
+    const foeSlots = (this.infantrySquads && this.infantrySquads.foe && this.infantrySquads.foe.userData.slots) || [];
+    if (this.infantrySquads && this.infantrySquads.foe) this.infantrySquads.foe.updateWorldMatrix(true, true);
+    foeSlots.forEach((slot) => {
+      const p = slot.getWorldPosition(new THREE.Vector3());
+      p.y += 5.2;
+      p.project(this.camera);
+      support.push({
+        x: (p.x * 0.5 + 0.5) * W,
+        y: (-p.y * 0.5 + 0.5) * H,
+        visible: slot.visible,
+        active: !!slot.userData.active,
+      });
+    });
     const dy = (PART_POS.head.y - PART_POS.torso.y) || 1;
     const dx = (PART_POS.armR.x - PART_POS.armL.x) || 1;
     state.screen = {
-      parts: s, torso: s.torso, W, H,
+      parts: s, support, torso: s.torso, W, H,
       du: { x: (s.head.x - s.torso.x) / dy, y: (s.head.y - s.torso.y) / dy },
       dr: { x: (s.armR.x - s.armL.x) / dx, y: (s.armR.y - s.armL.y) / dx },
     };
@@ -882,7 +896,9 @@ export class World {
       } else if (e.type === 'shot' && e.side === 'me') {
         // shell flies from our hand to the targeted enemy part (or wide on a miss)
         const from = this._myMuzzleWorld();
-        const target = e.hit && e.part
+        const target = e.hit && Number.isInteger(e.support)
+          ? this._supportWorld(e.support)
+          : e.hit && e.part
           ? this._enemyPartWorld(e.part)
           : this._enemyPartWorld('torso').add(new THREE.Vector3((rnd() < 0 ? -1 : 1) * (14 + Math.random() * 14), 6 + Math.random() * 10, 0));
         if (e.kill) this._trackKill(from, target);
@@ -937,6 +953,14 @@ export class World {
   _enemyPartWorld(part) {
     const node = this._enemy.userData.parts[part] || this._enemy.userData.parts.torso;
     return node.getWorldPosition(new THREE.Vector3());
+  }
+  _supportWorld(index) {
+    const slots = (this.infantrySquads && this.infantrySquads.foe && this.infantrySquads.foe.userData.slots) || [];
+    const slot = slots[index];
+    if (!slot) return this._enemyPartWorld('torso');
+    const p = slot.getWorldPosition(new THREE.Vector3());
+    p.y += 2.2;
+    return p;
   }
 
   // char + sag destroyed parts (applied once when a part's coordination hits 0)

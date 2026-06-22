@@ -101,6 +101,7 @@ export function createState() {
       squad: mkSquad(SQUADS.me), parts: mkParts(),
       shell: 'AT', max: 1, maxArmed: false,
       targetPart: 'torso',         // which enemy part we're aiming at
+      targetSupport: null,         // optional enemy rifle-team member focus
       weapon: 'cannon', ammo: initAmmo(),
       halted: false,               // stance: marching (drifty aim, evasive) vs halted (steady aim, exposed)
     },
@@ -192,11 +193,22 @@ function damagePart(unit, part, baseDmg, acc01, maxShot) {
 // ---- player intents ----
 
 export function setTarget(state, part) {
-  if (state.phase === 'battle' && PART_CFG[part]) state.me.targetPart = part;
+  if (state.phase === 'battle' && PART_CFG[part]) {
+    state.me.targetPart = part;
+    state.me.targetSupport = null;
+  }
+}
+export function setSupportTarget(state, index) {
+  if (state.phase !== 'battle') return;
+  const s = state.foe.squad[index];
+  if (!s || s.down || s.hp <= 0) return;
+  state.me.targetSupport = index;
+  setBanner(state, `鎖定敵支援 — ${s.zh}`, 'me', 0.8);
 }
 export function cycleTarget(state) {
   const i = PARTS.indexOf(state.me.targetPart);
   state.me.targetPart = PARTS[(i + 1) % PARTS.length];
+  state.me.targetSupport = null;
 }
 
 export function cycleWeapon(state) {
@@ -237,11 +249,11 @@ export function tryFire(state) {
     const inf = Math.round(rand(5, 9) * (maxShot ? 1.8 : 1));
     state.foe.infantry = Math.max(0, state.foe.infantry - inf);
     state.foe.hp = Math.max(0, state.foe.hp - Math.round(baseR * 0.25));
-    damageSquad(state.foe, rand(18, 30) * (maxShot ? 1.5 : 1));
+    const sup = damageSquad(state.foe, rand(18, 30) * (maxShot ? 1.5 : 1), me.targetSupport);
     if (Math.random() < 0.6) knockSquad(state.foe);
-    shotFx = { type: 'shot', side: 'me', weapon: 'cannon', part: 'torso', hit: true, shrapnel: true };
+    shotFx = { type: 'shot', side: 'me', weapon: 'cannon', part: 'torso', support: sup ? state.foe.squad.indexOf(sup) : null, hit: true, shrapnel: true };
     state.fx.push(shotFx);
-    setBanner(state, `對人彈命中 — 敵步兵 −${inf}`, 'me', 1.0);
+    setBanner(state, `對人彈命中 — ${sup ? sup.zh : '敵步兵'} −${inf}`, 'me', 1.0);
   } else if (W.kind === 'burst') {
     // machine gun: a spray of pellets scattered across the silhouette
     let total = 0, last = null;
@@ -250,9 +262,9 @@ export function tryFire(state) {
       if (part) { total += damagePart(state.foe, part, baseR * W.dmg * pas.afwDmg, acc01, false); last = part; }
     }
     state.foe.infantry = Math.max(0, state.foe.infantry - rand(3, 6));
-    damageSquad(state.foe, rand(8, 16));
-    if (Math.random() < 0.45) damageSquad(state.foe, rand(6, 12));
-    shotFx = { type: 'shot', side: 'me', weapon: 'mg', part: last, hit: total > 0, burst: true };
+    const sup = damageSquad(state.foe, rand(8, 16), me.targetSupport);
+    if (Math.random() < 0.45) damageSquad(state.foe, rand(6, 12), me.targetSupport);
+    shotFx = { type: 'shot', side: 'me', weapon: 'mg', part: last, support: sup ? state.foe.squad.indexOf(sup) : null, hit: total > 0 || !!sup, burst: true };
     state.fx.push(shotFx);
     setBanner(state, total > 0 ? `機槍掃射 −${total}` : '機槍掃射 — 落空', 'me', 1.0);
   } else if (W.kind === 'multi') {
@@ -263,9 +275,9 @@ export function tryFire(state) {
     let total = 0;
     for (const part of set) total += damagePart(state.foe, part, baseR * W.dmg * pas.afwDmg, acc01, false);
     state.foe.infantry = Math.max(0, state.foe.infantry - rand(4, 8));
-    damageSquad(state.foe, rand(14, 24));
-    if (Math.random() < 0.65) damageSquad(state.foe, rand(10, 18));
-    shotFx = { type: 'shot', side: 'me', weapon: 'shrap', part: a || 'torso', hit: set.size > 0, multi: true };
+    const sup = damageSquad(state.foe, rand(14, 24), me.targetSupport);
+    if (Math.random() < 0.65) damageSquad(state.foe, rand(10, 18), me.targetSupport);
+    shotFx = { type: 'shot', side: 'me', weapon: 'shrap', part: a || 'torso', support: sup ? state.foe.squad.indexOf(sup) : null, hit: set.size > 0 || !!sup, multi: true };
     state.fx.push(shotFx);
     setBanner(state, `榴散彈 −${total}（${set.size} 部位）`, 'me', 1.0);
   } else {
@@ -285,7 +297,7 @@ export function tryFire(state) {
       let dmg = damagePart(state.foe, part, base, acc01, maxShot);
       if (W.kind === 'splash') {
         for (const ap of (ADJ[part] || [])) dmg += damagePart(state.foe, ap, base * 0.4, acc01, false);
-        damageSquad(state.foe, rand(12, 24));
+        damageSquad(state.foe, rand(12, 24), me.targetSupport);
       }
       if (W.kind === 'pierce' && part !== 'torso') dmg += damagePart(state.foe, 'torso', base * 0.5, acc01, false);
       shotFx = { type: 'shot', side: 'me', weapon: W.id, part, hit: true, crit };
@@ -362,10 +374,13 @@ function knockSquad(unit) {
   }
 }
 
-function damageSquad(unit, amount) {
+function damageSquad(unit, amount, preferredIndex = null) {
   const alive = unit.squad.filter((s) => !s.down && s.hp > 0);
   if (!alive.length) return null;
-  const s = alive[Math.floor(Math.random() * alive.length)];
+  const preferred = preferredIndex !== null ? unit.squad[preferredIndex] : null;
+  const s = preferred && !preferred.down && preferred.hp > 0
+    ? preferred
+    : alive[Math.floor(Math.random() * alive.length)];
   s.hp = Math.max(0, s.hp - amount);
   if (s.hp <= 0) {
     s.down = true;

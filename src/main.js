@@ -6,7 +6,7 @@ import { World } from './world.js';
 import { Hud } from './hud.js';
 import { bindControls } from './input.js';
 import { audio } from './audio.js';
-import { createState, update, tryFire, tryDodge, tryMove, trySkill, tryShell, tryHalt, setTarget, cycleTarget, cycleWeapon, PARTS, PART_CFG } from './combat.js';
+import { createState, update, tryFire, tryDodge, tryMove, trySkill, tryShell, tryHalt, setTarget, setSupportTarget, cycleTarget, cycleWeapon, PARTS, PART_CFG } from './combat.js';
 
 const world = new World(document.getElementById('scene'));
 const hud = new Hud();
@@ -15,6 +15,7 @@ let state = createState();
 let running = false;
 
 hud.onTarget = (part) => { if (running) setTarget(state, part); };
+hud.onSupportTarget = (index) => { if (running) setSupportTarget(state, index); };
 
 bindControls({
   fire: () => running && tryFire(state),
